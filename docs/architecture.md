@@ -21,6 +21,8 @@ what is in the code.
 | `InputSetup` | `systems/input_setup.gd` | Registers input actions in code. |
 | `Waves` | `systems/waves.gd` | The ocean surface. `Waves.height_at(x, z)` is what boats float on. |
 | `BlockLibrary` | `systems/block_library.gd` | Loads every BlockDef in `data/blocks/`. |
+| `Inventory` | `systems/inventory.gd` | What the player owns but has not fitted, as item id to count. |
+| `GameState` | `systems/game_state.gd` | The player's boat design, facility build limits, tutorial flag. |
 
 ## Decisions
 
@@ -47,6 +49,17 @@ what is in the code.
 6. **Boarding puts you at the helm.** Walking on a moving deck is deferred;
    it is a known source of jitter with character controllers on rigid bodies.
 
+7. **Blocks are owned.** Placing a block takes it from the inventory and
+   removing it gives it back, so a boat is always made of things the player
+   has. Step 3's shop sells more blocks into the same inventory.
+8. **Editing rules are separate from the workshop scene.** `DesignEditor`
+   (place, remove, drag-fill, undo, size limits, blueprint matching) has no
+   3D or UI code, so it is tested headless. `workshop.gd` is the 3D view and
+   input; `workshop_ui.gd` is the panels.
+9. **Build size depends on the facility.** `GameState.FACILITIES` holds each
+   facility's grid limits. The personal dock allows 9 x 8 x 19 cells (about
+   2.25 m x 2 m x 4.75 m); the public dry dock and shipyards will add larger ones.
+
 ## Collision layers
 
 | Layer | Used by |
@@ -61,4 +74,6 @@ what is in the code.
 - `tests/physics_test.tscn`: headless boat checks (floating, top speed,
   turning, coasting, waves, design save and load). Run:
   `godot --headless --path . --fixed-fps 60 res://tests/physics_test.tscn`
+- `tests/editor_test.tscn`: workshop checks (placement rules, inventory,
+  undo, every tutorial step, design analysis, the workshop scene).
 - `tools/screenshots.tscn`: a scripted camera tour that saves screenshots.

@@ -14,8 +14,8 @@ var _notice_time := 0.0
 func _ready() -> void:
 	_prompt = _make_label(Control.PRESET_CENTER_BOTTOM, 22)
 	_prompt.position.y -= 120
-	_notice = _make_label(Control.PRESET_CENTER_TOP, 20)
-	_notice.position.y += 40
+	_notice = _make_label(Control.PRESET_CENTER_BOTTOM, 20)
+	_notice.position.y -= 190
 	_instruments = _make_label(Control.PRESET_BOTTOM_LEFT, 20)
 	_instruments.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_instruments.position += Vector2(24, -24)
@@ -56,4 +56,6 @@ func _make_label(preset: Control.LayoutPreset, font_size: int) -> Label:
 	l.set_anchors_and_offsets_preset(preset, Control.PRESET_MODE_MINSIZE)
 	if preset == Control.PRESET_BOTTOM_LEFT:
 		l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	else:
+		l.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	return l

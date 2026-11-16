@@ -13,6 +13,10 @@ const BERTH_OFFSET := 2.6
 
 var player_spawn: Marker3D
 var berth: Marker3D
+## Where the workshop builds and previews boats (beside the dock, at the berth).
+var build_site: Marker3D
+## Used with E to open the boat workshop.
+var workshop_point: Interactable
 
 var _timber := StandardMaterial3D.new()
 var _pile := StandardMaterial3D.new()
@@ -53,6 +57,26 @@ func build(shore: Vector3, outward: Vector3) -> void:
 
 	player_spawn = _marker("PlayerSpawn", Vector3(0, DECK_HEIGHT + 1.0, -3.0))
 	berth = _marker("Berth", Vector3(WIDTH * 0.5 + BERTH_OFFSET, 0.6, -length * 0.6))
+	build_site = _marker("BuildSite", Vector3(WIDTH * 0.5 + BERTH_OFFSET, 0.35, -length * 0.6))
+
+	# A workbench at the shore end of the dock, where the workshop opens.
+	var bench_mat := StandardMaterial3D.new()
+	bench_mat.albedo_color = Color(0.42, 0.3, 0.2)
+	_add_box(body, Vector3(-WIDTH * 0.5 + 0.45, DECK_HEIGHT + 0.5, -5.0), Vector3(0.7, 0.9, 1.6), bench_mat)
+	var vice_mat := StandardMaterial3D.new()
+	vice_mat.albedo_color = Color(0.2, 0.35, 0.55)
+	_add_box(body, Vector3(-WIDTH * 0.5 + 0.45, DECK_HEIGHT + 1.05, -5.4), Vector3(0.3, 0.2, 0.3), vice_mat)
+	workshop_point = Interactable.new()
+	workshop_point.name = "Workshop"
+	workshop_point.prompt = "Open the boat workshop"
+	var wshape := CollisionShape3D.new()
+	var wbox := BoxShape3D.new()
+	wbox.size = Vector3(1.6, 2.0, 2.4)
+	wshape.shape = wbox
+	workshop_point.add_child(wshape)
+	workshop_point.position = Vector3(-WIDTH * 0.5 + 0.45, DECK_HEIGHT + 0.8, -5.0)
+	add_child(workshop_point)
+
 	# Where a player at the helm can step off onto the dock.
 	for dz in [-length * 0.3, -length * 0.6, -length * 0.9]:
 		var m := _marker("Disembark", Vector3(WIDTH * 0.5 - 0.5, DECK_HEIGHT + 0.9, dz))

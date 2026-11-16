@@ -13,6 +13,9 @@ enum Category { STRUCTURE, PROPULSION, EQUIPMENT, DECORATION }
 @export var shape := Shape.CUBE
 ## Size in grid cells before rotation.
 @export var size := Vector3i.ONE
+## The cell (in the block's own cells) that goes where the player clicks.
+## An outboard uses its top cell, so it hangs down from the transom.
+@export var anchor := Vector3i.ZERO
 @export var mass_kg := 1.0
 @export var price := 0
 @export var default_color := Color(0.7, 0.72, 0.75)

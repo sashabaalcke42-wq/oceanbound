@@ -21,6 +21,8 @@ EventBus="*res://systems/event_bus.gd"
 InputSetup="*res://systems/input_setup.gd"
 Waves="*res://systems/waves.gd"
 BlockLibrary="*res://systems/block_library.gd"
+Inventory="*res://systems/inventory.gd"
+GameState="*res://systems/game_state.gd"
 
 [display]
 
