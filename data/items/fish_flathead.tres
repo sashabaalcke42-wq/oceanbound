@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://items/item_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fish_flathead"
+display_name = "Flathead"
+description = "Lies on sandy bottoms close to shore."
+category = 0
+base_price = 12
+min_depth = 1.0
+max_depth = 14.0
+rarity_weight = 3.0

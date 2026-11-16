@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://items/item_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fish_kingfish"
+display_name = "Kingfish"
+description = "A strong fighter that patrols the drop-off."
+category = 0
+base_price = 34
+min_depth = 15.0
+max_depth = 60.0
+rarity_weight = 1.2

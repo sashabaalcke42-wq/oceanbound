@@ -34,6 +34,7 @@ var _detail_noise := FastNoiseLite.new()
 
 
 func _ready() -> void:
+	add_to_group(&"island")
 	generate()
 
 
@@ -93,7 +94,13 @@ func height_at(x: float, z: float) -> float:
 ## Where the marina goes: the last dry point walking out from the centre
 ## along the harbour direction, and the outward direction (flat, unit length).
 func harbour_site() -> Dictionary:
-	var dir := Vector3(cos(deg_to_rad(harbour_angle)), 0, sin(deg_to_rad(harbour_angle)))
+	return shore_site(harbour_angle)
+
+
+## The shoreline in a compass direction (degrees, 0 = +X, 90 = +Z): the last
+## dry point walking out from the centre, and the outward direction.
+func shore_site(angle_deg: float) -> Dictionary:
+	var dir := Vector3(cos(deg_to_rad(angle_deg)), 0, sin(deg_to_rad(angle_deg)))
 	var shore := Vector3.ZERO
 	var d := 0.0
 	while d < world_size * 0.5:
@@ -104,6 +111,11 @@ func harbour_site() -> Dictionary:
 		d += 1.0
 	shore.y = height_at(shore.x, shore.z)
 	return {"shore": shore, "outward": dir}
+
+
+## How deep the water is here (0 on land).
+func depth_at(x: float, z: float) -> float:
+	return maxf(-height_at(x, z), 0.0)
 
 
 func _raw_height(x: float, z: float) -> float:

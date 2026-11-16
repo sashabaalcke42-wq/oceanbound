@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ShopDef" format=3]
+
+[ext_resource type="Script" path="res://items/shop_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"general_store"
+display_name = "General Store"
+greeting = "Bait's fresh this morning."
+stock = Array[StringName]([&"bait_pack", &"rod_basic"])

@@ -8,9 +8,9 @@ what is in the code.
 
 | Layer | Where | What it holds |
 | --- | --- | --- |
-| Data | `data/` | Block definitions (`.tres` BlockDef files). Items, fish and jobs join in later steps. |
+| Data | `data/`, `items/`, `jobs/` | Block, item and shop definitions (`.tres`), and job kinds (small scripts that make Job objects). |
 | Services | `systems/` | Autoload singletons with one job each. They never look up scene nodes. |
-| World | `world/`, `player/`, `ui/` | The scenes you see: ocean, island, dock, player, HUD. |
+| World | `world/`, `player/`, `ui/` | The scenes you see: ocean, island, docks, town, jetties, player, HUD, menu screens. |
 | Vessels | `vessel/` | Designs, the builder that turns a design into a boat, and the boat physics. |
 
 ## Autoloads
@@ -21,7 +21,11 @@ what is in the code.
 | `InputSetup` | `systems/input_setup.gd` | Registers input actions in code. |
 | `Waves` | `systems/waves.gd` | The ocean surface. `Waves.height_at(x, z)` is what boats float on. |
 | `BlockLibrary` | `systems/block_library.gd` | Loads every BlockDef in `data/blocks/`. |
-| `Inventory` | `systems/inventory.gd` | What the player owns but has not fitted, as item id to count. |
+| `ItemLibrary` | `systems/item_library.gd` | Loads every ItemDef in `data/items/`; names and prices for any ownable id. |
+| `Inventory` | `systems/inventory.gd` | What the player owns but has not fitted, as item id to count: blocks, fish, bait, cargo. |
+| `Economy` | `systems/economy.gd` | Money (`earn`, `spend`, each with a reason) and fish market prices. |
+| `Locations` | `systems/locations.gd` | Named places (docks, jetties, the town quay) that jobs and the HUD point at. |
+| `Jobs` | `systems/jobs.gd` | The job board, the active job, objectives, deadlines and payouts. |
 | `GameState` | `systems/game_state.gd` | The player's boat design, facility build limits, tutorial flag. |
 
 ## Decisions
@@ -59,6 +63,17 @@ what is in the code.
 9. **Build size depends on the facility.** `GameState.FACILITIES` holds each
    facility's grid limits. The personal dock allows 9 x 8 x 19 cells (about
    2.25 m x 2 m x 4.75 m); the public dry dock and shipyards will add larger ones.
+10. **Jobs are data.** A job is a list of objectives, each "go to a place, and
+    on arrival take or give some items". Deliveries, fish orders and later
+    passengers or towing are new combinations, made by a small script in
+    `jobs/kinds/` listed in `Jobs.KIND_SCRIPTS`. Arrival only counts when the
+    player is on foot or the boat is nearly stopped.
+11. **Places emit, the world decides.** The town and jetties only emit
+    `place_used(id)`; `world/main.gd` opens the matching screen. Screens extend
+    `ui/screens/screen.gd` and fill a list of rows.
+12. **Money has one door.** Every change goes through `Economy.earn()` or
+    `Economy.spend()` with a reason, so a ledger, taxes or loans can hook in
+    without touching callers. Fish prices drift and fall as you sell.
 
 ## Collision layers
 
@@ -76,4 +91,8 @@ what is in the code.
   `godot --headless --path . --fixed-fps 60 res://tests/physics_test.tscn`
 - `tests/editor_test.tscn`: workshop checks (placement rules, inventory,
   undo, every tutorial step, design analysis, the workshop scene).
+- `tests/flow_test.tscn`: a scripted play-through (workshop, launch, drive,
+  dock, rebuild, fall in the sea). Any error printed is a failure.
+- `tests/loop_test.tscn`: the core loop (shops, job board, deliveries and
+  deadlines, fish orders, fishing, the fish market, fuel).
 - `tools/screenshots.tscn`: a scripted camera tour that saves screenshots.

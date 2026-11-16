@@ -9,3 +9,5 @@ signal interaction_prompt_changed(text: String)
 ## The player took or left the helm of a vessel.
 signal player_boarded(vessel: Node)
 signal player_disembarked(vessel: Node)
+## What the player is busy doing (such as fishing). Empty text hides it.
+signal activity_changed(text: String)

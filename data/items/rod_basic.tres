@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://items/item_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"rod_basic"
+display_name = "Basic fishing rod"
+plural_name = "Fishing rods"
+description = "A simple rod and reel. Press F to cast when you are stopped."
+category = 2
+base_price = 40
