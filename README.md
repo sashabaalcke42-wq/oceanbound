@@ -13,3 +13,24 @@ water.
 3. Press **F5** (or the play button) to run.
 
 See `docs/` for architecture notes and decisions.
+
+## Controls
+
+| Key | On foot | At the helm |
+| --- | --- | --- |
+| W A S D | Walk | Throttle up and down, steer |
+| Mouse | Look | Look around the boat |
+| Shift | Sprint | |
+| Space | Jump | |
+| E | Use (board a boat) | Step off at a dock |
+| R | | Start or stop the engine |
+| X | | Cut the throttle |
+| Esc | Free or capture the mouse | |
+
+## Checking the code
+
+The boat physics has a headless test. With Godot on your PATH:
+
+```
+godot --headless --path . --fixed-fps 60 res://tests/physics_test.tscn
+```

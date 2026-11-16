@@ -1,0 +1,56 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://world/main.gd" id="1"]
+[ext_resource type="Script" path="res://world/ocean/ocean.gd" id="2"]
+[ext_resource type="Script" path="res://world/island/island_generator.gd" id="3"]
+[ext_resource type="PackedScene" path="res://player/player.tscn" id="4"]
+[ext_resource type="Script" path="res://ui/hud.gd" id="5"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
+sky_top_color = Color(0.28, 0.5, 0.78, 1)
+sky_horizon_color = Color(0.72, 0.8, 0.88, 1)
+ground_bottom_color = Color(0.1, 0.17, 0.25, 1)
+ground_horizon_color = Color(0.72, 0.8, 0.88, 1)
+sun_angle_max = 20.0
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_mat")
+
+[sub_resource type="Environment" id="env"]
+background_mode = 2
+sky = SubResource("sky")
+ambient_light_source = 3
+reflected_light_source = 2
+tonemap_mode = 4
+ssao_enabled = true
+fog_enabled = true
+fog_light_color = Color(0.68, 0.77, 0.86, 1)
+fog_density = 0.00025
+fog_sky_affect = 0.3
+
+[sub_resource type="CameraAttributesPractical" id="cam_attr"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")
+camera_attributes = SubResource("cam_attr")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 50, 0)
+light_color = Color(1, 0.96, 0.9, 1)
+light_energy = 1.1
+shadow_enabled = true
+directional_shadow_max_distance = 250.0
+
+[node name="Ocean" type="Node3D" parent="."]
+script = ExtResource("2")
+
+[node name="Island" type="Node3D" parent="."]
+script = ExtResource("3")
+
+[node name="Player" parent="." instance=ExtResource("4")]
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("5")

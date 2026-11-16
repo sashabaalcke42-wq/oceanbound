@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BlockDef" format=3]
+
+[ext_resource type="Script" path="res://vessel/blocks/block_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"outboard_15hp"
+display_name = "15 hp outboard"
+description = "A small two-stroke outboard. Mount it on the transom with the leg below the waterline."
+category = 1
+size = Vector3i(1, 4, 1)
+mass_kg = 38.0
+price = 1450
+default_color = Color(0.15, 0.16, 0.18, 1)
+thrust_n = 1500.0
+steer_angle_deg = 32.0
+fuel_burn_lph = 5.5

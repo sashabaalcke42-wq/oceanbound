@@ -1,0 +1,36 @@
+class_name BlockDef
+extends Resource
+## Definition of one kind of building block. One .tres file per block in
+## res://data/blocks/. Adding a block type means adding a file here, not code.
+
+enum Shape { CUBE, WEDGE }
+enum Category { STRUCTURE, PROPULSION, EQUIPMENT, DECORATION }
+
+@export var id: StringName
+@export var display_name := ""
+@export_multiline var description := ""
+@export var category := Category.STRUCTURE
+@export var shape := Shape.CUBE
+## Size in grid cells before rotation.
+@export var size := Vector3i.ONE
+@export var mass_kg := 1.0
+@export var price := 0
+@export var default_color := Color(0.7, 0.72, 0.75)
+
+@export_group("Hull")
+## Hull blocks count as sealed volume and keep the boat afloat.
+@export var buoyant := false
+
+@export_group("Propulsion")
+## Maximum forward thrust in newtons. Applied at the block's lowest cell.
+@export var thrust_n := 0.0
+## How far the engine swings to steer, in degrees. 0 means it cannot steer.
+@export var steer_angle_deg := 0.0
+@export var fuel_burn_lph := 0.0
+
+@export_group("Equipment")
+## Litres of fuel this block holds.
+@export var fuel_capacity_l := 0.0
+## A helm is where the player sits to drive. A vessel needs one to be driven.
+@export var is_helm := false
+@export var seats := 0

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BlockDef" format=3]
+
+[ext_resource type="Script" path="res://vessel/blocks/block_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"hull_aluminium_wedge"
+display_name = "Aluminium hull, angled"
+description = "An angled hull section for bows and chines. Half the volume of a full block."
+shape = 1
+mass_kg = 0.45
+price = 14
+default_color = Color(0.72, 0.74, 0.77, 1)
+buoyant = true
