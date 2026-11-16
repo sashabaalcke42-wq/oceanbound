@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BlockDef" format=3]
+
+[ext_resource type="Script" path="res://vessel/blocks/block_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"seat_helm"
+display_name = "Helm seat"
+description = "Where you sit to drive. Every boat needs one."
+category = 2
+size = Vector3i(2, 1, 1)
+mass_kg = 4.0
+price = 60
+default_color = Color(0.5, 0.38, 0.26, 1)
+is_helm = true
+seats = 1

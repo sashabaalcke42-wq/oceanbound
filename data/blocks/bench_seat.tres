@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="BlockDef" format=3]
+
+[ext_resource type="Script" path="res://vessel/blocks/block_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bench_seat"
+display_name = "Bench seat"
+description = "A plank seat across the boat."
+category = 2
+size = Vector3i(1, 1, 1)
+mass_kg = 1.5
+price = 20
+default_color = Color(0.5, 0.38, 0.26, 1)
+seats = 1
