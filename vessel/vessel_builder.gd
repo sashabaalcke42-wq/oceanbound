@@ -244,6 +244,89 @@ static func _collision_boxes(design: VesselDesign) -> Array[AABB]:
 	return out
 
 
+## A design checked the way the workshop shows it: problems that stop a
+## launch, warnings that do not, and estimates of how the boat will sit and go.
+static func analyse(design: VesselDesign) -> Dictionary:
+	var problems: Array[String] = []
+	var warnings: Array[String] = []
+	var out := {"problems": problems, "warnings": warnings, "stats": {}, "estimates": {}}
+	if design.blocks.is_empty():
+		problems.append("Place some blocks to start a boat.")
+		return out
+	var stats := compute_stats(design)
+	out["stats"] = stats
+	if not _is_connected(design):
+		problems.append("Some blocks are not attached to the rest of the boat.")
+	if stats["buoyant_volume"] <= 0.0:
+		problems.append("There are no hull blocks to keep it afloat.")
+		return out
+	if not stats["has_helm"]:
+		problems.append("It needs a helm seat to drive from.")
+
+	# Calm-water estimates, with one person aboard.
+	var loaded: float = stats["mass"] + 80.0
+	var hull_bottom := INF
+	var gunwale := INF
+	for col: Dictionary in stats["columns"]:
+		var p: Vector3 = col["pos"]
+		hull_bottom = minf(hull_bottom, p.y - col["half_height"])
+		gunwale = minf(gunwale, p.y + col["half_height"])
+	var area: float = maxf(stats["waterplane_area"], 0.01)
+	var draft := loaded / (WATER_DENSITY * area)
+	var waterline := hull_bottom + draft
+	var freeboard := gunwale - waterline
+	if stats["displacement_kg"] < loaded * 1.15 or freeboard <= 0.02:
+		problems.append("It is too heavy for its hull and would sink. Add hull blocks.")
+	elif freeboard < 0.15:
+		warnings.append("It sits very low in the water. Waves may swamp it.")
+
+	var engines: Array = stats["engines"]
+	if engines.is_empty():
+		warnings.append("It has no engine.")
+	else:
+		if stats["fuel_capacity"] <= 0.0:
+			warnings.append("It has no fuel tank, so the engine will not run.")
+		for e: Dictionary in engines:
+			var prop_y: float = (e["pos"] as Vector3).y
+			if prop_y > waterline - 0.05:
+				warnings.append("A propeller would be out of the water. Mount the engine lower.")
+				break
+
+	# Top speed where thrust balances drag (see vessel.gd for the model).
+	var prof: Dictionary = VESSEL_SCRIPT.DEFAULT_PROFILE
+	var k: float = prof["drag_forward"] * area * prof["planing_drag_factor"]
+	var c: float = prof["drag_lateral_linear"] * area * 0.05
+	var thrust: float = stats["total_thrust"]
+	var top := (-c + sqrt(c * c + 4.0 * k * thrust)) / (2.0 * k) if thrust > 0.0 else 0.0
+	out["estimates"] = {
+		"loaded_mass": loaded,
+		"draft": draft,
+		"freeboard": freeboard,
+		"top_speed_kn": top * 1.944,
+	}
+	return out
+
+
+static func _is_connected(design: VesselDesign) -> bool:
+	var cells := {}
+	for e in design.blocks:
+		for c in VesselDesign.cells_of(e):
+			cells[c] = true
+	if cells.is_empty():
+		return true
+	var start: Vector3i = cells.keys()[0]
+	var seen := {start: true}
+	var stack: Array[Vector3i] = [start]
+	while not stack.is_empty():
+		var c: Vector3i = stack.pop_back()
+		for d in _FACE_DIRS:
+			var n: Vector3i = c + d
+			if cells.has(n) and not seen.has(n):
+				seen[n] = true
+				stack.append(n)
+	return seen.size() == cells.size()
+
+
 static func _block_aabb(entry: Dictionary) -> AABB:
 	var cells := VesselDesign.cells_of(entry)
 	var lo: Vector3i = cells[0]
@@ -263,6 +346,15 @@ const _FACE_DIRS: Array[Vector3i] = [
 ]
 
 
+## The merged mesh for a design, as shown in the world and in the workshop.
+static func mesh_for(design: VesselDesign) -> ArrayMesh:
+	var occupancy := {}
+	for i in design.blocks.size():
+		for c in VesselDesign.cells_of(design.blocks[i]):
+			occupancy[c] = i
+	return _build_mesh(design, occupancy)
+
+
 static func _build_mesh(design: VesselDesign, occupancy: Dictionary) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -271,6 +363,8 @@ static func _build_mesh(design: VesselDesign, occupancy: Dictionary) -> ArrayMes
 	mat.metallic = 0.35
 	mat.roughness = 0.45
 	st.set_material(mat)
+	if design.blocks.is_empty():
+		return ArrayMesh.new()
 
 	for entry in design.blocks:
 		var def := BlockLibrary.get_block(entry["id"])

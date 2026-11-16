@@ -9,6 +9,7 @@ display_name = "15 hp outboard"
 description = "A small two-stroke outboard. Mount it on the transom with the leg below the waterline."
 category = 1
 size = Vector3i(1, 4, 1)
+anchor = Vector3i(0, 3, 0)
 mass_kg = 38.0
 price = 1450
 default_color = Color(0.15, 0.16, 0.18, 1)

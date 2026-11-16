@@ -5,7 +5,7 @@ extends CharacterBody3D
 ## parked on the boat's helm seat with collisions off, and movement keys drive
 ## the boat instead. One camera rig serves both, with a longer arm on the water.
 
-enum State { ON_FOOT, AT_HELM }
+enum State { ON_FOOT, AT_HELM, IN_MENU }
 
 const WALK_SPEED := 4.0
 const SPRINT_SPEED := 7.0
@@ -40,7 +40,23 @@ func _ready() -> void:
 	_capture_mouse(true)
 
 
+## Hand control to a full-screen menu (such as the workshop) or take it back.
+func set_in_menu(on: bool) -> void:
+	if on:
+		state = State.IN_MENU
+		_set_focus(null)
+		velocity = Vector3.ZERO
+		if DisplayServer.get_name() != "headless":
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		state = State.ON_FOOT
+		_camera.current = true
+		_capture_mouse(true)
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if state == State.IN_MENU:
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_yaw -= event.relative.x * MOUSE_SENSITIVITY
 		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENSITIVITY, -1.3, 0.6)

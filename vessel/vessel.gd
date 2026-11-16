@@ -19,7 +19,7 @@ const GRAVITY := 9.81
 
 ## Drag coefficients are per square metre of waterplane; rotational damping
 ## values are decay rates per second.
-var profile := {
+const DEFAULT_PROFILE := {
 	"drag_forward": 3.2,
 	"drag_lateral": 70.0,
 	"drag_lateral_linear": 160.0,
@@ -33,6 +33,8 @@ var profile := {
 	"throttle_rate": 0.7,
 	"steer_rate": 3.0,
 }
+
+var profile: Dictionary = DEFAULT_PROFILE.duplicate()
 
 var design: VesselDesign
 var stats: Dictionary
