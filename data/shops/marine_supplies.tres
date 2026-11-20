@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ShopDef" format=3]
+
+[ext_resource type="Script" path="res://items/shop_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"marine_supplies"
+display_name = "Marine Supplies"
+greeting = "Hull plate, motors, the lot. Mind the dog."
+stock = Array[StringName]([&"hull_aluminium", &"hull_aluminium_wedge", &"bench_seat", &"seat_helm", &"fuel_tank_12l", &"outboard_15hp"])

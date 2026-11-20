@@ -38,6 +38,21 @@ func _ready() -> void:
 	_camera.current = true
 	_reach.collision_mask = Interactable.LAYER
 	_capture_mouse(true)
+	var fishing := preload("res://player/fishing.gd").new()
+	fishing.name = "Fishing"
+	add_child(fishing)
+
+
+## The flat direction the camera looks, for casting a line ahead.
+func facing() -> Vector3:
+	return Basis(Vector3.UP, _yaw) * Vector3.FORWARD
+
+
+## True when on foot, or at the helm of a boat that has nearly stopped.
+func is_settled() -> bool:
+	if state == State.AT_HELM:
+		return is_instance_valid(vessel) and absf(vessel.get(&"speed_ms")) < 2.0
+	return state == State.ON_FOOT
 
 
 ## Hand control to a full-screen menu (such as the workshop) or take it back.

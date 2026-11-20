@@ -77,6 +77,11 @@ func build(shore: Vector3, outward: Vector3) -> void:
 	workshop_point.position = Vector3(-WIDTH * 0.5 + 0.45, DECK_HEIGHT + 0.8, -5.0)
 	add_child(workshop_point)
 
+	var pump := preload("res://world/marina/fuel_pump.gd").new()
+	pump.name = "FuelPump"
+	pump.position = Vector3(WIDTH * 0.5 - 0.35, DECK_HEIGHT + 0.1, -length * 0.45)
+	add_child(pump)
+
 	# Where a player at the helm can step off onto the dock.
 	for dz in [-length * 0.3, -length * 0.6, -length * 0.9]:
 		var m := _marker("Disembark", Vector3(WIDTH * 0.5 - 0.5, DECK_HEIGHT + 0.9, dz))

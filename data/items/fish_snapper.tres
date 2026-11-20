@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://items/item_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fish_snapper"
+display_name = "Snapper"
+description = "Prized reef fish found in mid-depth water."
+category = 0
+base_price = 22
+min_depth = 8.0
+max_depth = 30.0
+rarity_weight = 2.5

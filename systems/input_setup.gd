@@ -14,6 +14,7 @@ const BINDINGS := {
 	"engine_toggle": [KEY_R],
 	"throttle_zero": [KEY_X],
 	"toggle_mouse": [KEY_ESCAPE],
+	"fish": [KEY_F],
 }
 
 

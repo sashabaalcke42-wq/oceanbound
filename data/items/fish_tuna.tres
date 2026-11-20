@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://items/item_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fish_tuna"
+display_name = "Yellowfin tuna"
+description = "Deep-water fish that fetches a high price. Rare."
+category = 0
+base_price = 60
+min_depth = 25.0
+max_depth = 1000.0
+rarity_weight = 0.6

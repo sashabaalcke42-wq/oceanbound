@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://items/item_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fish_sardine"
+display_name = "Sardine"
+plural_name = "Sardines"
+description = "Small and plentiful in the shallows. Good bait, modest money."
+category = 0
+base_price = 4
+min_depth = 0.5
+max_depth = 10.0
+rarity_weight = 6.0

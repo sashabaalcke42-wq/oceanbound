@@ -21,7 +21,11 @@ EventBus="*res://systems/event_bus.gd"
 InputSetup="*res://systems/input_setup.gd"
 Waves="*res://systems/waves.gd"
 BlockLibrary="*res://systems/block_library.gd"
+ItemLibrary="*res://systems/item_library.gd"
 Inventory="*res://systems/inventory.gd"
+Economy="*res://systems/economy.gd"
+Locations="*res://systems/locations.gd"
+Jobs="*res://systems/jobs.gd"
 GameState="*res://systems/game_state.gd"
 
 [display]

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://items/item_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bait_pack"
+display_name = "Bait (one cast)"
+plural_name = "Bait packs"
+description = "Fresh pilchard pieces. Fish bite about twice as fast when you use bait."
+category = 1
+base_price = 2
