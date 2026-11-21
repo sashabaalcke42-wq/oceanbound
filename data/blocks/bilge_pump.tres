@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BlockDef" format=3]
+
+[ext_resource type="Script" path="res://vessel/blocks/block_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bilge_pump"
+display_name = "Bilge pump"
+description = "Pumps out water that slops over the side, about 40 litres a minute. Fit it low in the boat."
+category = 2
+mass_kg = 2.0
+price = 65
+default_color = Color(0.95, 0.75, 0.1, 1)
+pump_lph = 2400.0
