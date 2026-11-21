@@ -7,7 +7,7 @@ extends Node3D
 
 const DECK_HEIGHT := 1.1
 const WIDTH := 2.4
-const BERTH_OFFSET := 2.6
+const BERTH_OFFSET := 2.0
 
 @export var length := 26.0
 

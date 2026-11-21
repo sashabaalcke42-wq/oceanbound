@@ -161,7 +161,7 @@ func _on_launch_requested(design: VesselDesign) -> void:
 	workshop = null
 	player.call(&"set_in_menu", false)
 	_spawn_player_boat(design)
-	EventBus.notify.emit("\"%s\" is in the water. Walk over and press E to take the helm." % design.design_name)
+	EventBus.notify.emit("\"%s\" is in the water, tied up alongside. Step aboard, walk to the helm seat and press E." % design.design_name)
 
 
 func _spawn_player_boat(design: VesselDesign) -> void:
@@ -172,4 +172,7 @@ func _spawn_player_boat(design: VesselDesign) -> void:
 		return
 	add_child(player_boat)
 	player_boat.add_to_group(&"player_boat")
-	player_boat.global_transform = (dock.get(&"berth") as Marker3D).global_transform
+	var at := (dock.get(&"berth") as Marker3D).global_transform
+	at.origin.y = VesselBuilder.float_height(player_boat.get(&"stats"))
+	player_boat.global_transform = at
+	player_boat.call(&"moor_here")

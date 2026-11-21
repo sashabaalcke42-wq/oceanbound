@@ -30,6 +30,9 @@ enum Category { STRUCTURE, PROPULSION, EQUIPMENT, DECORATION }
 ## How far the engine swings to steer, in degrees. 0 means it cannot steer.
 @export var steer_angle_deg := 0.0
 @export var fuel_burn_lph := 0.0
+## The water speed at which the propeller stops pushing (its pitch times its
+## top revs). Thrust falls off towards it, as with a real propeller.
+@export var prop_pitch_speed_ms := 14.0
 
 @export_group("Equipment")
 ## Litres of fuel this block holds.
@@ -37,3 +40,5 @@ enum Category { STRUCTURE, PROPULSION, EQUIPMENT, DECORATION }
 ## A helm is where the player sits to drive. A vessel needs one to be driven.
 @export var is_helm := false
 @export var seats := 0
+## A bilge pump: litres per hour it pumps out of the boat. Runs on its own.
+@export var pump_lph := 0.0

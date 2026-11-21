@@ -1,26 +1,38 @@
 extends RigidBody3D
 ## A live boat in the world. Built by VesselBuilder from a VesselDesign.
 ##
-## Physics model ("believable arcade"):
+## Physics model:
 ## - Buoyancy: each hull column pushes up in proportion to how much of it is
 ##   under the wave surface, at its own position, so boats pitch and roll on
-##   waves and a lopsided design lists.
+##   waves and a lopsided design lists. People and water aboard add weight
+##   where they are, so the boat trims and heels with its load.
 ## - Drag: light along the hull, heavy sideways, so boats carve turns rather
-##   than slide. Above about twice hull speed the hull starts planing and
-##   forward drag drops.
-## - Thrust: each engine pushes at its propeller, only while the propeller is
-##   in the water. Outboards steer by swinging their thrust.
+##   than slide. It acts on the boat's speed through the water, and the water
+##   itself moves with the waves, so boats surge and get set back by swell.
+##   Above about twice hull speed the hull starts planing and drag drops.
+## - Wind pushes on the hull above the water and turns a drifting boat.
+## - Thrust: each engine pushes at its propeller. Thrust falls off as the
+##   boat approaches the propeller's pitch speed, and fades as the propeller
+##   lifts towards the surface (ventilation), when the engine races.
+##   Outboards steer by swinging their thrust.
+## - Water aboard: waves higher than the gunwale slop in, collect in the
+##   bottom of the boat, slosh to the low side and weigh it down. A bilge
+##   pump or bailing gets it out. An engine whose powerhead goes under dies.
+## - Mooring: left alongside a jetty, a boat is held by its lines.
 ## Tuning numbers live in `profile` so they can be adjusted without code.
 
 signal engine_state_changed(running: bool)
 signal fuel_empty
 
 const GRAVITY := 9.81
+const AIR_DENSITY := 1.2
+const IDLE_RPM := 900.0
+const MAX_RPM := 5800.0
 
 ## Drag coefficients are per square metre of waterplane; rotational damping
 ## values are decay rates per second.
 const DEFAULT_PROFILE := {
-	"drag_forward": 3.2,
+	"drag_forward": 3.0,
 	"drag_lateral": 70.0,
 	"drag_lateral_linear": 160.0,
 	"planing_drag_factor": 0.55,
@@ -32,6 +44,14 @@ const DEFAULT_PROFILE := {
 	"thrust_height_assist": 0.75,
 	"throttle_rate": 0.7,
 	"steer_rate": 3.0,
+	## Air drag on the part above the water (Cd times area fraction).
+	"windage": 0.9,
+	## How readily water pours in over a submerged gunwale.
+	"ingress_rate": 1.7,
+	## Mooring lines: spring (per kg of boat) and damping, and slack in metres.
+	"mooring_spring": 0.6,
+	"mooring_damping": 1.4,
+	"mooring_slack": 0.4,
 }
 
 var profile: Dictionary = DEFAULT_PROFILE.duplicate()
@@ -45,18 +65,30 @@ var throttle := 0.0
 var steer := 0.0
 var engine_running := false
 var fuel_l := 0.0
+## Engine revs, for the instruments and the engine sound.
+var rpm := 0.0
+## Litres of water slopping about in the bottom of the boat.
+var water_l := 0.0
+## Where the boat is tied up, if it is.
+var moored := false
+var mooring_transform := Transform3D()
 
 ## Set every frame by whoever is at the helm (player or AI pilot).
 var input_throttle_axis := 0.0
 var input_steer_axis := 0.0
 var input_throttle_zero := false
 
-## Read-only telemetry for the HUD and tests.
+## Read-only telemetry for the HUD, effects and tests.
 var speed_ms := 0.0
 var submerged_ratio := 0.0
+## How much of the propeller's grip is left (0 = spinning in air).
+var prop_grip := 1.0
 
 var _payloads := {}  # key -> [mass, local position]
 var _helm_occupant: Node3D
+var _water_shift := Vector3.ZERO
+var _water_payload := [0.0, Vector3.ZERO]
+var _head_wet_time := 0.0
 
 
 func setup(p_design: VesselDesign, p_stats: Dictionary) -> void:
@@ -71,7 +103,10 @@ func setup(p_design: VesselDesign, p_stats: Dictionary) -> void:
 	angular_damp = 0.05
 	can_sleep = false
 	continuous_cd = false
-	_add_board_area()
+	_add_helm_seat()
+	var fx := preload("res://vessel/vessel_effects.gd").new()
+	fx.name = "Effects"
+	add_child(fx)
 
 
 func has_helm() -> bool:
@@ -90,6 +125,9 @@ func set_engine_running(on: bool) -> void:
 	if on and fuel_l <= 0.0:
 		EventBus.notify.emit("Out of fuel.")
 		return
+	if on and _head_wet_time > 0.0:
+		EventBus.notify.emit("The engine is under water. Bail the boat out first.")
+		return
 	if on == engine_running:
 		return
 	engine_running = on
@@ -105,22 +143,54 @@ func set_payload(key: StringName, mass_kg: float, local_pos: Vector3) -> void:
 
 
 func clear_payload(key: StringName) -> void:
-	_payloads.erase(key)
-	_apply_mass_properties()
+	if _payloads.erase(key):
+		_apply_mass_properties()
 
 
 func set_helm_occupant(who: Node3D) -> void:
 	_helm_occupant = who
 	if who:
-		set_payload(&"helm", 80.0, stats["helm_position"])
+		moored = false
+		set_payload(&"helm", 80.0, stats["helm_position"] + Vector3.UP * 0.6)
 	else:
 		clear_payload(&"helm")
 		input_throttle_axis = 0.0
 		input_steer_axis = 0.0
+		input_throttle_zero = false
+		try_moor()
 
 
 func helm_occupant() -> Node3D:
 	return _helm_occupant
+
+
+## Tie up if we are stopped beside a jetty or dock. Returns true if moored.
+func try_moor() -> bool:
+	if engine_running and absf(throttle) > 0.05:
+		return false
+	if linear_velocity.length() > 1.5:
+		return false
+	for n in get_tree().get_nodes_in_group(&"disembark_points"):
+		if (n as Node3D).global_position.distance_to(global_position) < 6.0:
+			moor_here()
+			return true
+	return false
+
+
+func moor_here() -> void:
+	moored = true
+	mooring_transform = global_transform
+
+
+## Take some litres of water out (a bucket, a pump).
+func bail(litres: float) -> void:
+	water_l = maxf(water_l - litres, 0.0)
+
+
+## How full of water the boat is, 0 to 1.
+func water_fraction() -> float:
+	var cap: float = stats.get("bilge_capacity_l", 0.0)
+	return water_l / cap if cap > 0.0 else 0.0
 
 
 func _physics_process(delta: float) -> void:
@@ -149,9 +219,11 @@ func _physics_process(delta: float) -> void:
 	submerged_ratio = total_buoyancy / (mass * GRAVITY)
 	var wet := clampf(submerged_ratio, 0.0, 1.0)
 
-	# Hull drag in the boat's own frame (-Z is forward).
-	var v_local := xf.basis.inverse() * linear_velocity
-	speed_ms = -v_local.z
+	# Hull drag in the boat's own frame (-Z is forward), against the water's
+	# own movement under the waves.
+	var water_vel := Waves.water_velocity(global_position.x, global_position.z)
+	var v_local := xf.basis.inverse() * (linear_velocity - water_vel)
+	speed_ms = -(xf.basis.inverse() * linear_velocity).z
 	# Displacement hull speed, roughly 0.4 * sqrt(g * length).
 	var hull_speed := 0.4 * sqrt(Waves.GRAVITY * maxf(stats["length"], 1.0))
 	var planing := smoothstep(hull_speed * 2.0, hull_speed * 3.2, absf(v_local.z))
@@ -173,7 +245,10 @@ func _physics_process(delta: float) -> void:
 		-profile["roll_pitch_damping"] * inertia.z * w_local.z)
 	apply_torque(xf.basis * damp * wet)
 
+	_apply_wind(xf)
 	_apply_thrust(xf, delta)
+	_update_water(xf, delta)
+	_apply_mooring(delta)
 
 
 func _update_controls(delta: float) -> void:
@@ -187,30 +262,128 @@ func _update_controls(delta: float) -> void:
 	steer = move_toward(steer, input_steer_axis, profile["steer_rate"] * delta)
 	if not engine_running:
 		throttle = 0.0
+	if engine_running and absf(throttle) > 0.05:
+		moored = false
+	# Revs follow the throttle with a little lag, and race when the propeller
+	# loses its grip on the water.
+	var target := 0.0
+	if engine_running:
+		target = lerpf(IDLE_RPM, MAX_RPM, absf(throttle)) * lerpf(1.25, 1.0, prop_grip)
+	rpm = lerpf(rpm, minf(target, MAX_RPM * 1.15), 1.0 - exp(-(3.0 if target > rpm else 1.5) * delta))
+
+
+func _apply_wind(xf: Transform3D) -> void:
+	# Area above the water, side-on and end-on: the boat's length or beam times
+	# its freeboard. Pushes at the middle of that area.
+	var rel := Waves.wind - linear_velocity
+	rel.y = 0.0
+	if rel.length_squared() < 0.01:
+		return
+	var freeboard := maxf(0.15, (1.0 - submerged_ratio) * 0.6)
+	var local := xf.basis.inverse() * rel
+	var side_area: float = stats["length"] * freeboard
+	var end_area: float = stats["beam"] * freeboard
+	var area := absf(local.x) / rel.length() * side_area + absf(local.z) / rel.length() * end_area
+	var force: Vector3 = rel * rel.length() * 0.5 * AIR_DENSITY * profile["windage"] * area
+	# Windage sits a little forward of the middle on most hulls, so a drifting
+	# boat swings its bow downwind.
+	var at := xf * (center_of_mass + Vector3(0, 0.3, -stats["length"] * 0.12)) - global_position
+	apply_force(force, at)
 
 
 func _apply_thrust(xf: Transform3D, delta: float) -> void:
 	if not engine_running:
+		prop_grip = 1.0
 		return
+	var grip_sum := 0.0
 	for e: Dictionary in stats["engines"]:
 		var burn: float = e["burn"] * maxf(absf(throttle), 0.1) * delta / 3600.0
 		fuel_l = maxf(fuel_l - burn, 0.0)
 		var prop: Vector3 = xf * (e["pos"] as Vector3)
-		if prop.y > Waves.height_at(prop.x, prop.z):
-			continue  # propeller out of the water
+		# Full grip 25 cm under the surface, none at the surface.
+		var depth := Waves.height_at(prop.x, prop.z) - prop.y
+		var grip := clampf((depth + 0.02) / 0.27, 0.0, 1.0)
+		grip_sum += grip
 		var dir: Vector3 = Basis(Vector3.UP, steer * (e["steer"] as float)) * (e["forward"] as Vector3)
 		var power: float = throttle if throttle >= 0.0 else throttle * profile["reverse_thrust_factor"]
+		# A propeller pushes less the faster the water comes at it.
+		var inflow := (xf.basis.inverse() * linear_velocity).dot(e["forward"] as Vector3) * signf(power)
+		var pitch: float = e.get("pitch_speed", 14.0)
+		var load := clampf(1.0 - maxf(inflow, 0.0) / pitch, 0.0, 1.0)
 		# Push from the propeller's position along the boat, but at a height
 		# partway up towards the centre of mass. Real hulls get planing lift
 		# that resists the bow-up moment of a low thrust line; this stands in
 		# for it without a full hydrodynamic model.
 		var local_at: Vector3 = e["pos"]
 		local_at.y = lerpf(local_at.y, center_of_mass.y, profile["thrust_height_assist"])
-		apply_force(xf.basis * dir * (e["thrust"] as float) * power, xf * local_at - global_position)
+		apply_force(xf.basis * dir * (e["thrust"] as float) * power * grip * load, xf * local_at - global_position)
+		# A powerhead under water drowns the engine.
+		var head: Vector3 = xf * (e.get("head", e["pos"]) as Vector3)
+		if head.y < Waves.height_at(head.x, head.z) - 0.05:
+			_head_wet_time += delta
+		else:
+			_head_wet_time = 0.0
+	prop_grip = grip_sum / maxf(stats["engines"].size(), 1)
+	if _head_wet_time > 0.6:
+		set_engine_running(false)
+		EventBus.notify.emit("The engine goes under and dies.")
+		return
 	if fuel_l <= 0.0:
 		set_engine_running(false)
 		fuel_empty.emit()
 		EventBus.notify.emit("The engine coughs and dies. Out of fuel.")
+
+
+## Water over the gunwale comes in; the pump takes it out; it gathers in the
+## bottom of the boat on whichever side is low.
+func _update_water(xf: Transform3D, delta: float) -> void:
+	var cap: float = stats.get("bilge_capacity_l", 0.0)
+	if cap <= 0.0:
+		return
+	var inflow := 0.0
+	for o: Dictionary in stats["openings"]:
+		var p: Vector3 = xf * (o["pos"] as Vector3)
+		var over := Waves.height_at(p.x, p.z) - p.y
+		if over > 0.0:
+			# Flow over a weir: width times head to the power 1.5.
+			inflow += profile["ingress_rate"] * sqrt(o["area"] as float) * pow(over, 1.5) * 1000.0
+	water_l = clampf(water_l + inflow * delta - (stats.get("pump_lps", 0.0) as float) * delta, 0.0, cap)
+
+	# The water's centre of mass slides towards the low side, with a little lag
+	# so it sloshes.
+	var down := xf.basis.inverse() * Vector3.DOWN
+	var ext: Vector3 = stats["bilge_extent"]
+	var fill := clampf(water_l / cap, 0.0, 1.0)
+	var target := Vector3(
+		clampf(down.x * 4.0, -1.0, 1.0) * ext.x,
+		-ext.y + ext.y * fill,
+		clampf(down.z * 4.0, -1.0, 1.0) * ext.z) * (1.0 - fill * 0.7)
+	_water_shift = _water_shift.lerp(target, 1.0 - exp(-2.5 * delta))
+	var kg := water_l
+	var pos: Vector3 = (stats["bilge_center"] as Vector3) + _water_shift
+	if absf(kg - _water_payload[0]) > 0.5 or pos.distance_to(_water_payload[1]) > 0.03:
+		_water_payload = [kg, pos]
+		if kg > 0.2:
+			set_payload(&"water", kg, pos)
+		else:
+			clear_payload(&"water")
+
+
+func _apply_mooring(_delta: float) -> void:
+	if not moored:
+		return
+	var off := mooring_transform.origin - global_position
+	off.y = 0.0
+	var slack: float = profile["mooring_slack"]
+	var stretch := maxf(off.length() - slack, 0.0)
+	var v := linear_velocity
+	v.y = 0.0
+	var f: Vector3 = off.normalized() * stretch * mass * profile["mooring_spring"] * 10.0 - v * mass * profile["mooring_damping"] * 0.5
+	apply_central_force(f)
+	# Hold the heading too.
+	var want := mooring_transform.basis.get_euler().y
+	var yaw_err := angle_difference(global_rotation.y, want)
+	apply_torque(Vector3.UP * (yaw_err * 4.0 - angular_velocity.y * 3.0) * inertia.y)
 
 
 func _apply_mass_properties() -> void:
@@ -234,25 +407,24 @@ func _apply_mass_properties() -> void:
 	self.inertia = inertia.max(Vector3.ONE * 0.5)
 
 
-func _add_board_area() -> void:
+## The helm seat: walk up to it on deck and press E to take the helm.
+func _add_helm_seat() -> void:
+	if not has_helm():
+		return
 	var area := Interactable.new()
 	area.name = "BoardArea"
 	area.prompt = "Take the helm"
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(stats["beam"] + 1.5, 2.5, stats["length"] + 1.5)
+	box.size = Vector3(1.4, 1.8, 1.4)
 	shape.shape = box
-	var mid: Vector3 = stats["center_of_mass"]
-	shape.position = Vector3(mid.x, 0.5, mid.z)
 	area.add_child(shape)
+	area.position = stats["helm_position"] + Vector3.UP * 0.6
 	add_child(area)
-	area.interacted.connect(_on_board_requested)
+	area.interacted.connect(_on_helm_requested)
 
 
-func _on_board_requested(by: Node) -> void:
-	if not has_helm():
-		EventBus.notify.emit("This boat has no helm seat to drive from.")
-		return
+func _on_helm_requested(by: Node) -> void:
 	if _helm_occupant:
 		return
 	if by.has_method(&"take_helm"):

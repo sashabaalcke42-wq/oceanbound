@@ -19,6 +19,10 @@ var _shots := [
 	[39.0, "10_job_board", &"_shot_jobs", 1.0],
 	[42.0, "11_job_beacon", &"_shot_beacon", 1.5],
 	[45.0, "12_fishing", &"_shot_fishing", 1.5],
+	[48.5, "13_character", &"_shot_character", 2.5],
+	[52.0, "14_running", &"_shot_running", 1.2],
+	[57.0, "15_first_person_helm", &"_shot_fp_helm", 3.0],
+	[61.0, "16_swimming", &"_shot_swim", 3.0],
 ]
 var _t := 0.0
 var _next := 0
@@ -124,8 +128,7 @@ func _shot_town_foot() -> void:
 	var t := _town()
 	var p := _player()
 	if p.get(&"state") == 1:
-		p.set(&"state", 0)
-		p.get_node("Collider").disabled = false
+		p.call(&"leave_helm")
 	p.global_position = t.to_global(Vector3(-6, 2.5, -4))
 	p.get_node("CameraPivot/SpringArm3D/Camera3D").current = true
 	var inland := t.global_basis.z
@@ -163,3 +166,63 @@ func _shot_fishing() -> void:
 	p.set(&"_yaw", atan2(-out.x, -out.z))
 	p.get_node("Fishing").call(&"cast")
 	p.set(&"_yaw", atan2(-out.x, -out.z) + PI * 0.8)
+
+
+func _shot_character() -> void:
+	var p := _player()
+	var dock: Node3D = main.get(&"dock")
+	p.global_position = dock.to_global(Vector3(0, 1.4, -8.0))
+	p.set(&"_body_yaw", dock.global_rotation.y + 2.6)
+	_cam.global_position = dock.to_global(Vector3(-1.6, 2.6, -10.2))
+	_cam.look_at(p.global_position + Vector3(0, 1.0, 0))
+	_cam.current = true
+
+
+func _shot_running() -> void:
+	# Run along the dock, filmed from the side.
+	var p := _player()
+	var dock: Node3D = main.get(&"dock")
+	p.global_position = dock.to_global(Vector3(0, 1.4, -4.0))
+	var out := -dock.global_basis.z
+	p.set(&"_yaw", atan2(-out.x, -out.z))
+	Input.action_press(&"move_forward")
+	Input.action_press(&"sprint")
+	await get_tree().create_timer(1.0).timeout
+	_cam.global_position = p.global_position + dock.global_basis.x * -3.2 + Vector3(0, 1.2, 0) + out * 1.0
+	_cam.look_at(p.global_position + Vector3(0, 0.9, 0))
+	_cam.current = true
+	await get_tree().create_timer(0.25).timeout
+	Input.action_release(&"move_forward")
+	Input.action_release(&"sprint")
+
+
+func _shot_fp_helm() -> void:
+	var p := _player()
+	var old: Node = main.get(&"player_boat")
+	if p.get(&"state") == 1:
+		p.call(&"leave_helm")
+	p.global_position = (main.get(&"dock") as Node3D).to_global(Vector3(0, 1.4, -6.0))
+	if is_instance_valid(old):
+		old.free()
+	main.call(&"_spawn_player_boat", StarterKit.blueprint())
+	var boat: RigidBody3D = main.get(&"player_boat")
+	p.call(&"take_helm", boat)
+	p.call(&"set_first_person", true)
+	p.get_node("CameraPivot/SpringArm3D/Camera3D").current = true
+	boat.call(&"set_engine_running", true)
+	boat.set(&"throttle", 0.7)
+	p.set(&"_yaw", boat.global_rotation.y)
+	p.set(&"_pitch", -0.12)
+
+
+func _shot_swim() -> void:
+	var p := _player()
+	p.call(&"leave_helm")
+	p.call(&"set_first_person", false)
+	var boat: RigidBody3D = main.get(&"player_boat")
+	boat.call(&"set_engine_running", false)
+	var dock: Node3D = main.get(&"dock")
+	p.global_position = dock.to_global(Vector3(-7.0, -1.2, -20.0))
+	p.velocity = Vector3.ZERO
+	p.set(&"_yaw", dock.global_rotation.y + 2.2)
+	p.set(&"_pitch", -0.2)

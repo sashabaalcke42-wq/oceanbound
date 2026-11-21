@@ -10,6 +10,7 @@ var _instruments: Label
 var _activity: Label
 var _money: Label
 var _job: Label
+var _water: Label
 var _money_flash := 0.0
 var _vessel: Node
 var _notice_time := 0.0
@@ -29,6 +30,8 @@ func _ready() -> void:
 	_money = _make_label(Control.PRESET_TOP_RIGHT, 26)
 	_money.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_money.position += Vector2(-24, 18)
+	_water = _make_label(Control.PRESET_CENTER_BOTTOM, 22)
+	_water.position.y -= 290
 	_job = _make_label(Control.PRESET_TOP_RIGHT, 18)
 	_job.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_job.position += Vector2(-24, 60)
@@ -51,14 +54,37 @@ func _process(delta: float) -> void:
 		var fuel: float = _vessel.get(&"fuel_l")
 		var running: bool = _vessel.get(&"engine_running")
 		_instruments.text = "Engine  %s\nThrottle  %+d%%\nSpeed  %.1f kn\nFuel  %.1f L" % [
-			"running" if running else "off", roundi(throttle * 100.0), knots, fuel]
+			"%d rpm" % roundi(_vessel.get(&"rpm")) if running else "off", roundi(throttle * 100.0), knots, fuel]
+		var wind: Vector3 = Waves.wind
+		_instruments.text += "\nWind  %d kn from %s" % [roundi(wind.length() * 1.944), _compass(-wind)]
 	else:
 		_instruments.text = ""
+	_update_water_warning()
 	_update_job()
 	if _money_flash > 0.0:
 		_money_flash -= delta
 		if _money_flash <= 0.0:
 			_update_money()
+
+
+## Water aboard whichever boat we are on, as a warning line.
+func _update_water_warning() -> void:
+	var boat: Node = _vessel
+	if not is_instance_valid(boat):
+		var p := get_tree().get_first_node_in_group(&"player")
+		boat = p.call(&"current_boat") if p else null
+	if is_instance_valid(boat) and boat.get(&"water_l") > 2.0:
+		var frac: float = boat.call(&"water_fraction")
+		_water.text = "Water aboard  %d L%s  (B to bail)" % [roundi(boat.get(&"water_l")), "  SWAMPED" if frac > 0.9 else ""]
+		_water.modulate = Color(1, 0.55, 0.4) if frac > 0.4 else Color(0.7, 0.9, 1)
+	else:
+		_water.text = ""
+
+
+static func _compass(v: Vector3) -> String:
+	# Godot's -Z is north and +X east.
+	var deg := fposmod(rad_to_deg(atan2(v.x, -v.z)), 360.0)
+	return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][int(roundf(deg / 45.0)) % 8]
 
 
 func _update_money() -> void:
