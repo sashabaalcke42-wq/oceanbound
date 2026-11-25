@@ -16,23 +16,20 @@ var body: StaticBody3D
 
 ## Place the jetty so it starts at `shore` and runs out along `outward`.
 func build(id: StringName, p_name: String, shore: Vector3, outward: Vector3,
-		p_length := 18.0, with_fuel := false) -> void:
+		p_length := 18.0, with_fuel := false, ground := Callable()) -> void:
 	location_id = id
 	display_name = p_name
 	length = p_length
 	name = String(id).to_pascal_case()
-	var start := Vector3(shore.x, 0.0, shore.z) - outward * 4.0
+	var start := BuildKit.land_end(shore, outward, DECK_HEIGHT + 0.1, ground)
 	global_position = start
 	look_at(start + outward, Vector3.UP)  # local -Z points out to sea
 
 	body = StaticBody3D.new()
 	body.name = "DeckBody"
 	add_child(body)
-	BuildKit.box(self, body, Vector3(0, DECK_HEIGHT, -length * 0.5), Vector3(WIDTH, 0.2, length), TIMBER)
-	var land_h := maxf(shore.y, 0.0)
-	var ramp_len := 4.0
-	BuildKit.box(self, body, Vector3(0, (DECK_HEIGHT + land_h) * 0.5, ramp_len * 0.5 - 0.2),
-			Vector3(WIDTH, 0.2, ramp_len), TIMBER, atan2(DECK_HEIGHT - land_h, ramp_len))
+	# Level with the ground where it meets the land; a little extra tucks under it.
+	BuildKit.box(self, body, Vector3(0, DECK_HEIGHT, -length * 0.5 + 0.5), Vector3(WIDTH, 0.2, length + 1.0), TIMBER)
 	var z := -1.0
 	while z > -length:
 		for side in [-1.0, 1.0]:

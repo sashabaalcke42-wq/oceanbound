@@ -37,7 +37,8 @@ func build(island: Node, angle_deg: float) -> void:
 
 	quay = preload("res://world/marina/jetty.gd").new()
 	add_child(quay)
-	quay.call(&"build", &"town_quay", "Town quay", shore, outward, QUAY_LENGTH, true)
+	quay.call(&"build", &"town_quay", "Harbour Town", shore, outward, QUAY_LENGTH, true,
+			Callable(island, &"height_at"))
 
 	_build_market_platform()
 	for b: Dictionary in BUILDINGS:

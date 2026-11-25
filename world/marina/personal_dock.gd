@@ -22,13 +22,14 @@ var _timber := StandardMaterial3D.new()
 var _pile := StandardMaterial3D.new()
 
 
-## Place the dock so it starts at `shore` and runs out along `outward`.
-func build(shore: Vector3, outward: Vector3) -> void:
+## Place the dock so it starts where the land reaches deck height (found with
+## `ground`, a height function (x, z)) and runs out along `outward`.
+func build(shore: Vector3, outward: Vector3, ground := Callable()) -> void:
 	_timber.albedo_color = Color(0.55, 0.42, 0.3)
 	_timber.roughness = 0.85
 	_pile.albedo_color = Color(0.3, 0.24, 0.18)
 
-	var start := Vector3(shore.x, 0.0, shore.z) - outward * 6.0
+	var start := BuildKit.land_end(shore, outward, DECK_HEIGHT + 0.1, ground)
 	global_position = start
 	look_at(start + outward, Vector3.UP)  # local -Z now points out to sea
 
@@ -36,13 +37,9 @@ func build(shore: Vector3, outward: Vector3) -> void:
 	body.name = "DockBody"
 	add_child(body)
 
-	# Walkway planks: one box, with a short ramp up from the land.
-	var deck_center := Vector3(0, DECK_HEIGHT, -length * 0.5)
-	_add_box(body, deck_center, Vector3(WIDTH, 0.2, length), _timber)
-	var ramp_len := 4.0
-	var land_h := maxf(shore.y, 0.0)
-	_add_box(body, Vector3(0, (DECK_HEIGHT + land_h) * 0.5, ramp_len * 0.5 - 0.2),
-			Vector3(WIDTH, 0.2, ramp_len), _timber, atan2(DECK_HEIGHT - land_h, ramp_len))
+	# Walkway planks: one box, level with the ground where it meets the land.
+	var deck_center := Vector3(0, DECK_HEIGHT, -length * 0.5 + 0.5)
+	_add_box(body, deck_center, Vector3(WIDTH, 0.2, length + 1.0), _timber)
 
 	# Piles every 3 m along both sides, down to the seabed.
 	var z := -1.0

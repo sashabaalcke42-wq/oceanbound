@@ -14,6 +14,12 @@ var _water: Label
 var _money_flash := 0.0
 var _vessel: Node
 var _notice_time := 0.0
+## Compass strip across the top: bearing ticks and markers for named places.
+var _compass_strip: Control
+var _compass_ticks: Array[Label] = []
+var _compass_marks: Array[Label] = []
+const COMPASS_HALF_WIDTH := 320.0
+const COMPASS_FOV_DEG := 90.0
 
 
 func _ready() -> void:
@@ -43,6 +49,7 @@ func _ready() -> void:
 	EventBus.notify.connect(_on_notify)
 	EventBus.player_boarded.connect(func(v: Node): _vessel = v)
 	EventBus.player_disembarked.connect(func(_v: Node): _vessel = null)
+	_build_compass()
 
 
 func _process(delta: float) -> void:
@@ -61,6 +68,7 @@ func _process(delta: float) -> void:
 		_instruments.text = ""
 	_update_water_warning()
 	_update_job()
+	_update_compass()
 	if _money_flash > 0.0:
 		_money_flash -= delta
 		if _money_flash <= 0.0:
@@ -85,6 +93,109 @@ static func _compass(v: Vector3) -> String:
 	# Godot's -Z is north and +X east.
 	var deg := fposmod(rad_to_deg(atan2(v.x, -v.z)), 360.0)
 	return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][int(roundf(deg / 45.0)) % 8]
+
+
+func _build_compass() -> void:
+	_compass_strip = Control.new()
+	_compass_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_compass_strip)
+	_compass_strip.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_compass_strip.position.y = 14
+	var bar := ColorRect.new()
+	bar.color = Color(0, 0, 0, 0.35)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.position = Vector2(-COMPASS_HALF_WIDTH, 0)
+	bar.size = Vector2(COMPASS_HALF_WIDTH * 2.0, 30)
+	_compass_strip.add_child(bar)
+	var centre := ColorRect.new()
+	centre.color = Color(1, 1, 1, 0.8)
+	centre.position = Vector2(-1, 0)
+	centre.size = Vector2(2, 30)
+	_compass_strip.add_child(centre)
+	for t in ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]:
+		_compass_ticks.append(_compass_label(20 if t.length() == 1 else 15))
+		_compass_ticks[-1].text = t
+
+
+func _compass_label(font_size: int) -> Label:
+	var l := Label.new()
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_font_size_override(&"font_size", font_size)
+	l.add_theme_color_override(&"font_outline_color", Color(0, 0, 0, 0.85))
+	l.add_theme_constant_override(&"outline_size", 5)
+	l.custom_minimum_size = Vector2(200, 0)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_compass_strip.add_child(l)
+	return l
+
+
+## Which way the camera looks, in compass degrees (0 north, 90 east).
+static func bearing_of(v: Vector3) -> float:
+	return fposmod(rad_to_deg(atan2(v.x, -v.z)), 360.0)
+
+
+func _update_compass() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		_compass_strip.visible = false
+		return
+	_compass_strip.visible = true
+	var heading := bearing_of(-cam.global_basis.z)
+	for i in _compass_ticks.size():
+		_place_on_compass(_compass_ticks[i], i * 45.0, heading, 2.0)
+	var ids := Locations.ids()
+	var target: StringName = &""
+	if Jobs.active != null:
+		var obj := Jobs.active.current_objective()
+		if not obj.is_empty():
+			target = obj["location"]
+	while _compass_marks.size() < ids.size():
+		_compass_marks.append(_compass_label(15))
+	var from := cam.global_position
+	for i in _compass_marks.size():
+		var l := _compass_marks[i]
+		if i >= ids.size():
+			l.visible = false
+			continue
+		var p := Locations.position_of(ids[i])
+		var flat := Vector3(p.x - from.x, 0.0, p.z - from.z)
+		var d := flat.length()
+		l.text = "▼\n%s\n%d m" % [Locations.name_of(ids[i]), roundi(d)]
+		if ids[i] == target:
+			l.modulate = Color(1.0, 0.82, 0.3)
+		elif ids[i] == &"town_quay":
+			l.modulate = Color(0.6, 0.95, 1.0)
+		else:
+			l.modulate = Color(1, 1, 1, 0.85)
+		_place_on_compass(l, bearing_of(flat), heading, 20.0)
+	_unstack_marks()
+
+
+## Drop a marker to a lower row when it would overlap one beside it.
+func _unstack_marks() -> void:
+	var shown := _compass_marks.filter(func(l: Label): return l.visible)
+	shown.sort_custom(func(a: Label, b: Label): return a.position.x < b.position.x)
+	var row_ends: Array[float] = []
+	var font := ThemeDB.fallback_font
+	for l: Label in shown:
+		var w := 0.0
+		for line in l.text.split("\n"):
+			w = maxf(w, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x)
+		var centre := l.position.x + l.size.x * 0.5
+		var row := 0
+		while row < row_ends.size() and row_ends[row] > centre - w * 0.5 - 8.0:
+			row += 1
+		if row == row_ends.size():
+			row_ends.append(0.0)
+		row_ends[row] = centre + w * 0.5
+		l.position.y += row * 52.0
+
+
+## Put a label on the strip at a compass bearing, or hide it when off the strip.
+func _place_on_compass(l: Label, bearing: float, heading: float, y: float) -> void:
+	var rel := wrapf(bearing - heading, -180.0, 180.0)
+	l.visible = absf(rel) <= COMPASS_FOV_DEG
+	l.position = Vector2(rel / COMPASS_FOV_DEG * COMPASS_HALF_WIDTH - l.size.x * 0.5, y)
 
 
 func _update_money() -> void:
