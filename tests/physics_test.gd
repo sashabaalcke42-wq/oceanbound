@@ -10,6 +10,8 @@ var _phase_start := 0
 var _failures: Array[String] = []
 var _turned := 0.0
 var _max_tilt := 0.0
+var _dry_y := 0.0
+var _drift_from := Vector3.ZERO
 var _min_y := INF
 
 
@@ -74,6 +76,7 @@ func _physics_process(_delta: float) -> void:
 				_check(turned > -360.0, "turn rate is not twitchy (under 60 deg/s)")
 				_check(absf(v_local.x) < absf(v_local.z) * 0.5, "carves rather than slides")
 				boat.set(&"input_steer_axis", 0.0)
+				boat.set(&"input_throttle_axis", 0.0)
 				boat.set(&"input_throttle_zero", true)
 				_next()
 		3:  # cut throttle, coast down
@@ -93,6 +96,54 @@ func _physics_process(_delta: float) -> void:
 					_max_tilt, _min_y, boat.get(&"submerged_ratio")])
 				_check(_max_tilt < 30.0, "does not capsize in normal waves")
 				_check(_min_y > -2.5, "stays afloat in normal waves")
+				var water: float = boat.get(&"water_l")
+				print("Water shipped in normal waves: %.1f L of %.0f" % [water, boat.get(&"stats")["bilge_capacity_l"]])
+				_check(boat.call(&"water_fraction") < 0.15, "ships little water in normal waves")
+				Waves.amplitude_scale = 0.0
+				boat.set(&"water_l", 0.0)
+				_next()
+		5:  # calm again; measure the draft, then put water in the boat
+			if is_equal_approx(t, 4.0):
+				_dry_y = boat.global_position.y
+				boat.set(&"water_l", 150.0)
+			if t >= 9.0:
+				var sank: float = _dry_y - boat.global_position.y
+				print("150 L of water aboard: sits %.1f cm lower" % (sank * 100.0))
+				_check(sank > 0.02, "water aboard weighs the boat down")
+				boat.call(&"bail", 1000.0)
+				_check(boat.get(&"water_l") == 0.0, "bailing empties the boat")
+				boat.call(&"set_engine_running", false)
+				Waves.wind_speed = 8.0
+				_drift_from = boat.global_position
+				_next()
+		6:  # engine off in an 8 m/s wind: drifts downwind
+			if t >= 15.0:
+				var moved: Vector3 = boat.global_position - _drift_from
+				moved.y = 0.0
+				print("15 s adrift in 16 kn of wind: moved %.1f m, %.0f deg off the wind" % [
+					moved.length(), rad_to_deg(moved.angle_to(Waves.wind))])
+				_check(moved.length() > 2.0, "wind pushes a drifting boat")
+				_check(moved.angle_to(Waves.wind) < deg_to_rad(60.0), "and pushes it downwind")
+				boat.call(&"moor_here")
+				_drift_from = boat.global_position
+				_next()
+		7:  # moored in the same wind: the lines hold it
+			if t >= 15.0:
+				var moved: Vector3 = boat.global_position - _drift_from
+				moved.y = 0.0
+				print("15 s moored in the wind: moved %.2f m" % moved.length())
+				_check(moved.length() < 1.0, "mooring lines hold the boat")
+				Waves.wind_speed = 5.0
+				boat.set(&"moored", false)
+				# Overload it and take it into a rough sea.
+				boat.call(&"set_payload", &"cargo", 900.0, boat.get(&"stats")["center_of_mass"])
+				_next()
+		8:
+			Waves.amplitude_scale = minf(t / 4.0, 1.0) * 2.0
+			if t >= 30.0:
+				var water: float = boat.get(&"water_l")
+				print("Overloaded in a rough sea for 26 s: %.0f L of water aboard, lowest %.2f m" % [water, boat.global_position.y])
+				_check(water > 5.0, "an overloaded boat ships water in rough seas")
 				_finish()
 
 

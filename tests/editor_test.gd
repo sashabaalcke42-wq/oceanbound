@@ -58,7 +58,7 @@ func _ready() -> void:
 	var est: Dictionary = a["estimates"]
 	print("Estimates: draft %.1f cm, freeboard %.0f cm, top speed %.1f kn" % [
 		est["draft"] * 100.0, est["freeboard"] * 100.0, est["top_speed_kn"]])
-	_check(est["top_speed_kn"] > 14.0 and est["top_speed_kn"] < 24.0, "estimated top speed is close to the simulated 19 kn")
+	_check(est["top_speed_kn"] > 13.0 and est["top_speed_kn"] < 20.0, "estimated top speed is close to the simulated 16 kn")
 
 	# Problems the workshop should catch.
 	var floating := VesselDesign.new()

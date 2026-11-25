@@ -18,15 +18,37 @@ See `docs/` for architecture notes and decisions.
 
 | Key | On foot | At the helm |
 | --- | --- | --- |
-| W A S D | Walk | Throttle up and down, steer |
-| Mouse | Look | Look around the boat |
-| Shift | Sprint | |
-| Space | Jump | |
-| E | Use (board a boat, shops, job board, fuel pump) | Step off at a dock |
-| F | Fish (cast, strike, reel in) | Fish, when stopped |
+| W A S D | Walk (also on a moving boat's deck) | Throttle up and down, steer |
+| Mouse | Look | Look around |
+| Shift | Run | |
+| Space | Jump (in the water: climb out at a jetty or boat side) | |
+| E | Use: take the helm, shops, job board, fuel pump | Get up from the seat |
 | R | | Start or stop the engine |
 | X | | Cut the throttle |
+| F | Fish (cast, strike, reel in) | Fish, when stopped |
+| B (hold) | Bail water out of the boat you are in | Bail |
+| V | First or third person | First or third person |
 | Esc | Free or capture the mouse | |
+
+Your boat is tied up alongside your dock. Step aboard, walk to the helm seat
+and press **E** to drive. Press **E** again to get up, at sea or alongside a
+jetty; a boat left stopped next to a jetty ties itself up. Fall in and you
+swim; swim to a jetty or your boat and press **Space** to climb out.
+
+## How the water behaves
+
+- Boats float on every bit of their hull, so your weight, your load and any
+  water in the bottom make them sit lower and lean towards the heavy side.
+  Walk to one side of the tinny and watch it list.
+- Waves move the water itself, so boats surge on crests and get set back in
+  troughs. Wind pushes on what is above the water and drifts a stopped boat.
+- A propeller only grips when it is well under the surface. Mount the motor
+  too high, or lift the stern on a wave, and the engine races and the boat
+  slows.
+- Waves higher than your gunwale slop in. The water sloshes to the low side
+  and weighs you down. Hold **B** to bail, or fit a **bilge pump** (Marine
+  Supplies). If the motor's powerhead goes under, the engine dies until you
+  have bailed out.
 
 ## Building a boat
 

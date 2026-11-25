@@ -19,7 +19,7 @@ what is in the code.
 | --- | --- | --- |
 | `EventBus` | `systems/event_bus.gd` | Global signals (notifications, prompts, boarding). |
 | `InputSetup` | `systems/input_setup.gd` | Registers input actions in code. |
-| `Waves` | `systems/waves.gd` | The ocean surface. `Waves.height_at(x, z)` is what boats float on. |
+| `Waves` | `systems/waves.gd` | The ocean surface and weather. `height_at(x, z)` is what boats float on; `water_velocity()` and `wind` push them about. |
 | `BlockLibrary` | `systems/block_library.gd` | Loads every BlockDef in `data/blocks/`. |
 | `ItemLibrary` | `systems/item_library.gd` | Loads every ItemDef in `data/items/`; names and prices for any ownable id. |
 | `Inventory` | `systems/inventory.gd` | What the player owns but has not fitted, as item id to count: blocks, fish, bait, cargo. |
@@ -50,8 +50,12 @@ what is in the code.
    partway up towards the centre of mass (`thrust_height_assist`), which stands
    in for planing lift. Without it a small, light boat flips backwards under
    full throttle. All numbers live in the vessel's `profile` dictionary.
-6. **Boarding puts you at the helm.** Walking on a moving deck is deferred;
-   it is a known source of jitter with character controllers on rigid bodies.
+6. **You walk on your boat.** The player's velocity is always in world
+   space; standing on a boat, the ground velocity is the deck's own point
+   velocity (including its turning), found with a ray down each tick. Jump
+   off and you keep that momentum. The player's 80 kg is added to the boat
+   as a payload where they stand. Built-in platform velocity is turned off
+   (`platform_floor_layers = 0`) so it is not counted twice.
 
 7. **Blocks are owned.** Placing a block takes it from the inventory and
    removing it gives it back, so a boat is always made of things the player
@@ -74,6 +78,19 @@ what is in the code.
 12. **Money has one door.** Every change goes through `Economy.earn()` or
     `Economy.spend()` with a reason, so a ledger, taxes or loans can hook in
     without touching callers. Fish prices drift and fall as you sell.
+13. **A realistic water model on top of the arcade one.** Drag uses the
+    boat's speed through the water, and the water moves with the waves
+    (`Waves.water_velocity`). Wind (`Waves.wind`) pushes on the area above
+    the water. Propeller thrust falls off towards the prop's pitch speed and
+    fades as the prop nears the surface. Water comes in where a wave rises
+    above an opening in the hull (worked out by the builder from the cells of
+    enclosed air with nothing above them), collects as a payload that slides to
+    the low side, and is pumped by bilge pumps or bailed. Boats spawn at their
+    calm waterline (`VesselBuilder.float_height`) and moor with spring lines.
+14. **The character is built and animated in code.** `player/humanoid.gd`
+    builds a jointed figure from capsules and boxes and animates it from the
+    player's speed, turning and state (walk, run, jump, land, swim, sit).
+    No imported models, so it can be restyled or replaced later.
 
 ## Collision layers
 

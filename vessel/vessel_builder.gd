@@ -75,6 +75,7 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 	var helm_pos := Vector3.ZERO
 	var has_helm := false
 	var seats := 0
+	var pump_lps := 0.0
 	var min_z := INF
 	var max_z := -INF
 	var min_x := INF
@@ -91,18 +92,24 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 		point_masses.append([def.mass_kg, center])
 		fuel += def.fuel_capacity_l
 		seats += def.seats
+		pump_lps += def.pump_lph / 3600.0
 		if def.is_helm and not has_helm:
 			has_helm = true
 			# Feet a little below the seat top, as if sitting.
 			helm_pos = center + Vector3(0, CELL * 0.5 - 0.3, 0)
 		if def.thrust_n > 0.0:
 			var lowest: Vector3i = cells[0]
+			var highest: Vector3i = cells[0]
 			for c in cells:
 				if c.y < lowest.y:
 					lowest = c
+				if c.y > highest.y:
+					highest = c
 			var b := Orientations.basis(entry["rot"])
 			engines.append({
 				"pos": Vector3(lowest) * CELL,
+				"head": Vector3(highest) * CELL,
+				"pitch_speed": def.prop_pitch_speed_ms,
 				"forward": b * Vector3.FORWARD,
 				"thrust": def.thrust_n,
 				"steer": deg_to_rad(def.steer_angle_deg),
@@ -139,6 +146,7 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 		max_x = maxf(max_x, p.x)
 
 	var com := moment / mass if mass > 0.0 else Vector3.ZERO
+	var bilge := _bilge(enclosed, hull_cells)
 	var buoy_columns: Array[Dictionary] = []
 	var buoyant_volume := 0.0
 	for key in columns:
@@ -170,6 +178,55 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 		"has_helm": has_helm,
 		"helm_position": helm_pos,
 		"seats": seats,
+		"pump_lps": pump_lps,
+		# Where water can slop in over the side, and where it collects.
+		"openings": bilge["openings"],
+		"bilge_center": bilge["center"],
+		"bilge_extent": bilge["extent"],
+		"bilge_capacity_l": enclosed.size() * CELL * CELL * CELL * 1000.0,
+	}
+
+
+## The open top of a boat (cells of enclosed air with nothing above them),
+## grouped into a few sample points along the gunwale height, plus the centre
+## and half-size of the space water would fill.
+static func _bilge(enclosed: Array[Vector3i], hull_cells: Dictionary) -> Dictionary:
+	var enclosed_set := {}
+	for c in enclosed:
+		enclosed_set[c] = true
+	var groups := {}  # Vector2i -> {top, x, z, n}
+	var lo := Vector3(INF, INF, INF)
+	var hi := -lo
+	var sum := Vector3.ZERO
+	for c in enclosed:
+		var p := Vector3(c) * CELL
+		sum += p
+		lo = lo.min(p)
+		hi = hi.max(p)
+		var above := c + Vector3i(0, 1, 0)
+		if enclosed_set.has(above) or hull_cells.has(above):
+			continue
+		var key := Vector2i(floori(c.x / 3.0), floori(c.z / 3.0))
+		if not groups.has(key):
+			groups[key] = {"top": -INF, "x": 0.0, "z": 0.0, "n": 0}
+		var g: Dictionary = groups[key]
+		g["top"] = maxf(g["top"], p.y + CELL * 0.5)
+		g["x"] += p.x
+		g["z"] += p.z
+		g["n"] += 1
+	var openings: Array[Dictionary] = []
+	for key in groups:
+		var g: Dictionary = groups[key]
+		openings.append({
+			"pos": Vector3(g["x"] / g["n"], g["top"], g["z"] / g["n"]),
+			"area": g["n"] * CELL * CELL,
+		})
+	if enclosed.is_empty():
+		return {"openings": openings, "center": Vector3.ZERO, "extent": Vector3.ZERO}
+	return {
+		"openings": openings,
+		"center": sum / enclosed.size(),
+		"extent": (hi - lo) * 0.5 + Vector3.ONE * CELL * 0.5,
 	}
 
 
@@ -244,6 +301,18 @@ static func _collision_boxes(design: VesselDesign) -> Array[AABB]:
 	return out
 
 
+## How high above sea level to put a boat's origin so it starts out floating
+## at its waterline in calm water, rather than dropping in with a splash.
+static func float_height(stats: Dictionary) -> float:
+	var bottom := INF
+	for col: Dictionary in stats["columns"]:
+		bottom = minf(bottom, (col["pos"] as Vector3).y - (col["half_height"] as float))
+	if bottom == INF:
+		return 0.0
+	var draft: float = stats["mass"] / (WATER_DENSITY * maxf(stats["waterplane_area"], 0.01))
+	return -bottom - draft
+
+
 ## A design checked the way the workshop shows it: problems that stop a
 ## launch, warnings that do not, and estimates of how the boat will sit and go.
 static func analyse(design: VesselDesign) -> Dictionary:
@@ -297,7 +366,13 @@ static func analyse(design: VesselDesign) -> Dictionary:
 	var k: float = prof["drag_forward"] * area * prof["planing_drag_factor"]
 	var c: float = prof["drag_lateral_linear"] * area * 0.05
 	var thrust: float = stats["total_thrust"]
-	var top := (-c + sqrt(c * c + 4.0 * k * thrust)) / (2.0 * k) if thrust > 0.0 else 0.0
+	# Propeller thrust falls off linearly towards its pitch speed:
+	# k v^2 + c v = T (1 - v / p), a quadratic in v.
+	var pitch := 1000.0
+	for e: Dictionary in engines:
+		pitch = minf(pitch, e.get("pitch_speed", 14.0))
+	var b := c + thrust / pitch
+	var top := (-b + sqrt(b * b + 4.0 * k * thrust)) / (2.0 * k) if thrust > 0.0 else 0.0
 	out["estimates"] = {
 		"loaded_mass": loaded,
 		"draft": draft,

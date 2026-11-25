@@ -7,6 +7,7 @@ var main: Node3D
 var player: CharacterBody3D
 var _steps: Array[Callable] = []
 var _wait := 0
+var _busy := false
 var _failures: Array[String] = []
 
 
@@ -17,9 +18,9 @@ func _ready() -> void:
 	_steps = [
 		_open_workshop, _place_some, _close_workshop,            # leave unfinished
 		_open_workshop, _undo_redo, _build_rest, _launch,
-		_board, _drive, _cut_and_leave_far, _drive_back, _leave_at_dock,
+		_board, _drive, _cut_and_leave_far, _standing_in_boat, _drive_back, _leave_at_dock,
 		_open_workshop, _remove_and_relaunch,
-		_walk_into_sea, _done,
+		_walk_into_sea, _swimming, _done,
 	]
 
 
@@ -27,11 +28,13 @@ func _physics_process(_delta: float) -> void:
 	if _wait > 0:
 		_wait -= 1
 		return
-	if _steps.is_empty():
+	if _steps.is_empty() or _busy:
 		return
 	var step: Callable = _steps.pop_front()
 	print("step: ", step.get_method())
-	step.call()
+	_busy = true
+	await step.call()
+	_busy = false
 
 
 func _ws() -> Node:
@@ -93,17 +96,30 @@ func _drive() -> void:
 	var boat: RigidBody3D = main.get(&"player_boat")
 	boat.call(&"set_engine_running", true)
 	boat.set(&"throttle", 1.0)
-	_wait = 300
+	# Start clear of the dock (leaving the berth needs steering, which this
+	# test does not do), then run at full throttle.
+	boat.global_position += -(main.get(&"dock") as Node3D).global_basis.z * 30.0
+	boat.set(&"moored", false)
+	_wait = 600
 
 
 func _cut_and_leave_far() -> void:
 	var boat: RigidBody3D = main.get(&"player_boat")
 	boat.set(&"throttle", 0.0)
-	player.call(&"leave_helm")  # far from a dock: should refuse politely
-	_check(player.get(&"state") == 1, "cannot step off at sea")
+	player.call(&"leave_helm")  # at sea: stand up in the boat
+	_check(player.get(&"state") == 0, "can get up from the helm at sea")
 	main.call(&"open_workshop")  # far from the berth: should refuse
 	_check(_ws() == null, "workshop refuses while the boat is away")
-	_wait = 10
+	_wait = 60
+
+
+func _standing_in_boat() -> void:
+	var boat: RigidBody3D = main.get(&"player_boat")
+	_check(player.get(&"riding") == boat, "standing on the boat's deck")
+	_check(player.global_position.distance_to(boat.global_position) < 3.0, "carried along with the boat")
+	boat.get_node("BoardArea").call(&"interact", player)
+	_check(player.get(&"state") == 1, "back at the helm")
+	_wait = 5
 
 
 func _drive_back() -> void:
@@ -130,11 +146,18 @@ func _remove_and_relaunch() -> void:
 
 func _walk_into_sea() -> void:
 	player.global_position = Vector3(0, -5, 900)
-	_wait = 30
+	_wait = 120
+
+
+func _swimming() -> void:
+	_check(player.get(&"state") == 3, "falling in the sea means swimming")
+	_check(player.global_position.y > -2.0, "a swimmer floats")
+	player.set(&"swim_time", 1000.0)
+	_wait = 5
 
 
 func _done() -> void:
-	_check(player.global_position.y > 0.0, "player is rescued from the sea")
+	_check(player.get(&"state") == 0 and player.global_position.y > 0.0, "player is rescued from the sea")
 	print("%d failure(s)" % _failures.size())
 	get_tree().quit(1 if not _failures.is_empty() else 0)
 
