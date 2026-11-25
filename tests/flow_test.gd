@@ -16,6 +16,7 @@ func _ready() -> void:
 	add_child(main)
 	player = main.get_node("Player")
 	_steps = [
+		_walk_ashore, _compass_shows_town,
 		_open_workshop, _place_some, _close_workshop,            # leave unfinished
 		_open_workshop, _undo_redo, _build_rest, _launch,
 		_board, _drive, _cut_and_leave_far, _standing_in_boat, _drive_back, _leave_at_dock,
@@ -142,6 +143,58 @@ func _remove_and_relaunch() -> void:
 	Inventory.add(&"hull_aluminium", 3)
 	_ws().call(&"request_launch")
 	_wait = 30
+
+
+## Walk off the land end of the dock in several directions, up the hill
+## beside it: the player must stay on top of the ground, never inside it.
+func _walk_ashore() -> void:
+	var island: Node = main.get_node("Island")
+	var spawn: Vector3 = player.global_position
+	var site: Dictionary = island.call(&"harbour_site")
+	var inland: Vector3 = -(site["outward"] as Vector3)
+	var worst := 99.0
+	var furthest := 0.0
+	for turn in [0.0, 0.6, -0.6, 1.2, -1.2]:
+		player.global_position = spawn
+		player.velocity = Vector3.ZERO
+		var dir := inland.rotated(Vector3.UP, turn)
+		player.set(&"_yaw", atan2(-dir.x, -dir.z))
+		Input.action_press(&"move_forward")
+		for i in 300:
+			await get_tree().physics_frame
+			var p := player.global_position
+			if (island.call(&"height_at", p.x, p.z) as float) < 1.5:
+				continue  # still on the dock
+			# The real ground surface: a ray straight down onto the terrain.
+			var q := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 4.0, p + Vector3.DOWN * 4.0, 1)
+			q.exclude = [player.get_rid()]
+			var hit := player.get_world_3d().direct_space_state.intersect_ray(q)
+			if not hit.is_empty():
+				worst = minf(worst, p.y - (hit["position"] as Vector3).y)
+		Input.action_release(&"move_forward")
+		furthest = maxf(furthest, Vector2(player.global_position.x - spawn.x, player.global_position.z - spawn.z).length())
+	print("  lowest feet-above-ground on the hill: %.2f m, furthest walked %.1f m" % [worst, furthest])
+	_check(worst > -0.2, "walking ashore stays on top of the hill")
+	_check(furthest > 8.0, "can walk off the dock onto land")
+	player.global_position = spawn
+	player.velocity = Vector3.ZERO
+	_wait = 10
+
+
+func _compass_shows_town() -> void:
+	var hud: Node = main.get_node_or_null("HUD")
+	if hud == null:
+		for c in main.get_children():
+			if c is CanvasLayer and c.has_method(&"bearing_of"):
+				hud = c
+	_check(hud != null, "HUD is present")
+	if hud:
+		var found := false
+		for l: Label in hud.get(&"_compass_marks"):
+			if l.text.contains("Harbour Town"):
+				found = true
+		_check(found, "compass lists Harbour Town")
+	_check(main.get_node("PersonalDock").get_node_or_null("TownSignpost") != null, "dock has a signpost to town")
 
 
 func _walk_into_sea() -> void:

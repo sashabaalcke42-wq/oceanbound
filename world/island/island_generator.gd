@@ -68,7 +68,11 @@ func generate() -> void:
 	var body := StaticBody3D.new()
 	body.name = "TerrainBody"
 	var shape := CollisionShape3D.new()
-	shape.shape = mesh.create_trimesh_shape()
+	var tri := mesh.create_trimesh_shape()
+	# Solid from both sides, so nothing that ends up under the ground can
+	# wander about inside the hill.
+	tri.backface_collision = true
+	shape.shape = tri
 	body.add_child(shape)
 	add_child(body)
 

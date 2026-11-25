@@ -33,7 +33,7 @@ func _ready() -> void:
 	dock = preload("res://world/marina/personal_dock.gd").new()
 	dock.name = "PersonalDock"
 	add_child(dock)
-	dock.call(&"build", site["shore"], site["outward"])
+	dock.call(&"build", site["shore"], site["outward"], Callable(island, &"height_at"))
 	(dock.get(&"workshop_point") as Interactable).interacted.connect(func(_by): open_workshop())
 	Locations.register(&"home_dock", "Your dock", (dock.get(&"berth") as Marker3D).global_position, 20.0)
 
@@ -46,7 +46,9 @@ func _ready() -> void:
 		var jetty: Node3D = preload("res://world/marina/jetty.gd").new()
 		add_child(jetty)
 		var s: Dictionary = island.call(&"shore_site", j["angle"])
-		jetty.call(&"build", j["id"], j["name"], s["shore"], s["outward"], 18.0, j.get("fuel", false))
+		jetty.call(&"build", j["id"], j["name"], s["shore"], s["outward"], 18.0, j.get("fuel", false),
+				Callable(island, &"height_at"))
+	_add_town_signpost()
 	var beacon := preload("res://world/beacon.gd").new()
 	beacon.name = "JobBeacon"
 	add_child(beacon)
@@ -74,6 +76,31 @@ func new_game() -> void:
 	EventBus.notify.emit("Your boat parts have arrived. Open the workshop at the end of your dock (E) to build your first boat.")
 
 
+## A fingerpost at the land end of your dock pointing the way to town, so a
+## new player knows where to head first.
+func _add_town_signpost() -> void:
+	var town_pos := Locations.position_of(&"town_quay")
+	var spawn: Vector3 = dock.get(&"player_spawn").global_position
+	var post := Node3D.new()
+	post.name = "TownSignpost"
+	dock.add_child(post)
+	var foot := dock.to_global(Vector3(-2.2, 0, 1.5))  # on land, beside the dock's shore end
+	foot.y = island.call(&"height_at", foot.x, foot.z)
+	post.global_position = foot
+	var to_town := Vector3(town_pos.x - spawn.x, 0, town_pos.z - spawn.z)
+	var dist := roundi(to_town.length())
+	BuildKit.box(post, null, Vector3(0, 1.1, 0), Vector3(0.14, 2.2, 0.14), Color(0.3, 0.24, 0.18))
+	# The arm points at the town.
+	var yaw := atan2(-to_town.x, -to_town.z)
+	var arm := BuildKit.box(post, null, Vector3.ZERO, Vector3(0.08, 0.35, 1.4), Color(0.9, 0.85, 0.7))
+	arm.global_transform = Transform3D(Basis(Vector3.UP, yaw), post.global_position + Vector3(0, 1.9, 0)
+			+ Basis(Vector3.UP, yaw) * Vector3(0, 0, -0.6))
+	var tip := BuildKit.box(post, null, Vector3.ZERO, Vector3(0.08, 0.25, 0.25), Color(0.9, 0.85, 0.7))
+	tip.global_transform = Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, PI / 4),
+			post.global_position + Vector3(0, 1.9, 0) + Basis(Vector3.UP, yaw) * Vector3(0, 0, -1.3))
+	BuildKit.sign_text(post, "Harbour Town  %d m\nshops · fish market · jobs" % dist, Vector3(0, 2.6, 0), 28)
+
+
 ## Open the menu for a place in town (a shop, the market, the job board).
 func open_place(place_id: StringName) -> void:
 	var s: CanvasLayer
@@ -89,7 +116,7 @@ func open_place(place_id: StringName) -> void:
 			s = preload("res://ui/screens/info_screen.gd").new("Harbour Office",
 					"\"Welcome to the harbour. Mind the speed limit near the quay.\"", [
 				["Public dry dock", "Bigger boats need a bigger slipway. Bookings open soon."],
-				["Charts", "Town quay, Lighthouse Point, Northern Cove and Oyster Farm all have public jetties. Fuel at the town quay, Oyster Farm and your own dock."],
+				["Charts", "Harbour Town, Lighthouse Point, Northern Cove and Oyster Farm all have public jetties. Fuel at the town quay, Oyster Farm and your own dock."],
 				["Fishing", "Sardines and flathead in the shallows, snapper and kingfish further out, tuna only in deep water."],
 			])
 	if s:
@@ -161,7 +188,7 @@ func _on_launch_requested(design: VesselDesign) -> void:
 	workshop = null
 	player.call(&"set_in_menu", false)
 	_spawn_player_boat(design)
-	EventBus.notify.emit("\"%s\" is in the water, tied up alongside. Step aboard, walk to the helm seat and press E." % design.design_name)
+	EventBus.notify.emit("\"%s\" is in the water, tied up alongside. Step aboard, walk to the helm seat and press E. Harbour Town is marked on the compass at the top of the screen." % design.design_name)
 
 
 func _spawn_player_boat(design: VesselDesign) -> void:

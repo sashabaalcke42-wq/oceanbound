@@ -73,8 +73,11 @@ be saved and loaded; loading needs enough blocks in your inventory.
 
 ## Making a living
 
-The town is a short run along the coast from your dock (head right as you
-look out to sea). On its quay are the **fish market**, the **job board** and a
+**Harbour Town** is a short run along the coast from your dock (head right as
+you look out to sea; the signpost at the land end of your dock points the
+way). The compass strip at the top of the screen always shows it, along with
+the public jetties and your own dock, each with its distance; the place your
+current job wants you is shown in gold. On its quay are the **fish market**, the **job board** and a
 fuel pump; up the hill are **Marine Supplies** (boat blocks), the **General
 Store** (bait and rods) and the **Harbour Office**. Public jetties at
 Lighthouse Point, Northern Cove and Oyster Farm are where deliveries go.
@@ -82,7 +85,7 @@ Lighthouse Point, Northern Cove and Oyster Farm are where deliveries go.
 - **Jobs.** Take one job at a time from the board. Its next step shows at the
   top right, and a gold beacon marks where to go. Deliveries have a deadline;
   stop at the jetty (or step off) to pick up and drop off. Fish orders want a
-  number of one fish brought to the town quay.
+  number of one fish brought to Harbour Town's quay.
 - **Fishing.** Press **F** facing the water from a dock, the shore or a
   stopped boat. When the float starts bobbing and it says something's biting,
   press **F** again quickly. Bait halves the wait. Deeper water holds bigger,

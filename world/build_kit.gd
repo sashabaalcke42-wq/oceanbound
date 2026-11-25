@@ -69,3 +69,17 @@ static func interaction(parent: Node3D, node_name: String, prompt: String, pos: 
 	i.position = pos
 	parent.add_child(i)
 	return i
+
+
+## Where a dock or jetty should meet the land: walking inland from the
+## shoreline, the first point where the ground is as high as the deck. A deck
+## that started further inland would be buried in the hillside.
+static func land_end(shore: Vector3, outward: Vector3, deck_height: float, ground: Callable) -> Vector3:
+	var p := Vector3(shore.x, 0.0, shore.z)
+	if not ground.is_valid():
+		return p - outward * 1.0
+	for i in 40:
+		if (ground.call(p.x, p.z) as float) >= deck_height - 0.05:
+			break
+		p -= outward * 0.25
+	return p
