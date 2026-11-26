@@ -120,6 +120,8 @@ func load_game() -> void:
 			player_boat.global_transform = Transform3D(Basis(Vector3.UP, float(b["yaw"])), at)
 			player_boat.set(&"fuel_l", float(b.get("fuel_l", 0.0)))
 			player_boat.set(&"water_l", float(b.get("water_l", 0.0)))
+			player_boat.set(&"engine_flood", float(b.get("engine_flood", 0.0)))
+			player_boat.set(&"hydrolocked", bool(b.get("hydrolocked", false)))
 			# Tied up if beside a jetty, otherwise left at anchor where it was.
 			if not player_boat.call(&"try_moor"):
 				player_boat.call(&"moor_here")

@@ -50,7 +50,7 @@ func _ready() -> void:
 	_button(grid, "+ $1,000", func(): _money(1000))
 	_button(grid, "+ $10,000", func(): _money(10000))
 	_button(grid, "Give 10 of every part", give_parts)
-	_button(grid, "Fill fuel and bail dry", refuel)
+	_button(grid, "Fill fuel, bail, dry engine", refuel)
 	_button(grid, "Right the boat", right_boat)
 	_button(grid, "Boat back to my berth", boat_home)
 	_button(grid, "Teleport me to my dock", func(): _teleport(&"home_dock"))
@@ -107,7 +107,9 @@ func refuel() -> void:
 		return
 	boat.set(&"fuel_l", float(boat.get(&"stats")["fuel_capacity"]))
 	boat.set(&"water_l", 0.0)
-	_status.text = "Tank full, bilge dry."
+	boat.set(&"engine_flood", 0.0)
+	boat.set(&"hydrolocked", false)
+	_status.text = "Tank full, bilge dry, engine dry."
 
 
 ## Stand the boat upright where it is, floating, and stopped.

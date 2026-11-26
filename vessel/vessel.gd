@@ -46,6 +46,8 @@ const DEFAULT_PROFILE := {
 	"steer_rate": 3.0,
 	## Air drag on the part above the water (Cd times area fraction).
 	"windage": 0.9,
+	## Most lift the water can give, in boat weights (see the buoyancy loop).
+	"max_lift_ratio": 2.0,
 	## How readily water pours in over a submerged gunwale.
 	"ingress_rate": 1.7,
 	## Mooring lines: spring (per kg of boat) and damping, and slack in metres.
@@ -72,6 +74,7 @@ var water_l := 0.0
 ## Where the boat is tied up, if it is.
 var moored := false
 var _board_area: Interactable
+var _right_area: Interactable
 var mooring_transform := Transform3D()
 
 ## Set every frame by whoever is at the helm (player or AI pilot).
@@ -89,7 +92,22 @@ var _payloads := {}  # key -> [mass, local position]
 var _helm_occupant: Node3D
 var _water_shift := Vector3.ZERO
 var _water_payload := [0.0, Vector3.ZERO]
-var _head_wet_time := 0.0
+## How much water has got into the engine, 0 to 1. It climbs while the
+## powerhead is under water (fast when running, since the engine sucks it
+## in), costs power and makes it misfire, and at 1 the engine stalls,
+## hydrolocked. Above water it slowly clears; a locked engine has to be
+## cranked by hand (R at the helm) to pump the water out of the cylinders.
+var engine_flood := 0.0
+var hydrolocked := false
+var _head_wet := false
+var _misfire := 0.0
+var _flood_rng := RandomNumberGenerator.new()
+const FLOOD_RATE_RUNNING := 0.4   # per second under water, engine running
+const FLOOD_RATE_OFF := 0.08      # per second under water, engine off
+const CLEAR_RATE_RUNNING := 0.06  # per second above water, running it dry
+const CLEAR_RATE_OFF := 0.02
+const CRANK_CLEARS := 0.15        # each pull of the starter on a locked engine
+const UNLOCK_BELOW := 0.45
 
 
 func setup(p_design: VesselDesign, p_stats: Dictionary) -> void:
@@ -105,6 +123,7 @@ func setup(p_design: VesselDesign, p_stats: Dictionary) -> void:
 	can_sleep = false
 	continuous_cd = false
 	_add_helm_seat()
+	_add_righting()
 	var fx := preload("res://vessel/vessel_effects.gd").new()
 	fx.name = "Effects"
 	add_child(fx)
@@ -146,15 +165,40 @@ func set_engine_running(on: bool) -> void:
 	if on and fuel_l <= 0.0:
 		EventBus.notify.emit("Out of fuel.")
 		return
-	if on and _head_wet_time > 0.0:
+	if on and not engine_running and _head_wet:
 		EventBus.notify.emit("The engine is under water. Bail the boat out first.")
 		return
+	if on and not engine_running and hydrolocked:
+		_crank_clear()
+		return
 	if on == engine_running:
+		return
+	# A wet engine may not catch first time.
+	if on and engine_flood > 0.15 and _flood_rng.randf() < engine_flood:
+		EventBus.notify.emit("It turns over, coughs and won't catch. Engine %d%% flooded, try again." % roundi(engine_flood * 100.0))
 		return
 	engine_running = on
 	if not on:
 		throttle = 0.0
 	engine_state_changed.emit(on)
+
+
+## A pull on a hydrolocked engine: water squirts out of the plug holes.
+func _crank_clear() -> void:
+	engine_flood = maxf(engine_flood - CRANK_CLEARS, 0.0)
+	if engine_flood < UNLOCK_BELOW:
+		hydrolocked = false
+		EventBus.notify.emit("Water sprays out and the engine turns over freely. Engine %d%% flooded. Press R to start." % roundi(engine_flood * 100.0))
+	else:
+		EventBus.notify.emit("You crank it over and water spurts out. Engine %d%% flooded, keep cranking (R)." % roundi(engine_flood * 100.0))
+
+
+## How much of its power the engine makes, with water in it and the odd
+## misfire.
+func engine_power() -> float:
+	if not engine_running:
+		return 0.0
+	return (1.0 - 0.65 * engine_flood) * (0.15 if _misfire > 0.0 else 1.0)
 
 
 ## Extra weight on board, such as the player or cargo.
@@ -261,12 +305,20 @@ func _physics_process(delta: float) -> void:
 		# Only offered to someone who is not already aboard.
 		var p := get_tree().get_first_node_in_group(&"player")
 		_board_area.enabled = _helm_occupant == null and p != null and p.call(&"current_boat") != self
+	if _right_area:
+		_right_area.enabled = is_capsized()
 	var xf := global_transform
 	var com_world := xf * center_of_mass
 	var area: float = maxf(stats["waterplane_area"], 0.05)
 	var total_buoyancy := 0.0
 
-	# Buoyancy and heave damping, per hull column.
+	# Buoyancy and heave damping, per hull column. An open boat counts the air
+	# inside it as buoyant, so a boat shoved under (by a wave, a jetty or a
+	# bump on the shore) would get many times its weight in lift and be
+	# fired out of the water like a cork, often landing upside down. Real
+	# boats swamp instead, so the lift is capped at a few times the weight;
+	# the water coming in over the side does the rest.
+	var pushes: Array = []
 	for col: Dictionary in stats["columns"]:
 		var p: Vector3 = xf * (col["pos"] as Vector3)
 		var hh: float = col["half_height"]
@@ -280,7 +332,11 @@ func _physics_process(delta: float) -> void:
 		var at := Vector3(p.x, p.y - hh + hh * frac, p.z)
 		var v_point := linear_velocity + angular_velocity.cross(at - com_world)
 		var damping: float = -profile["heave_damping"] * (col["area"] as float) * frac * v_point.y
-		apply_force(Vector3.UP * (lift + damping), at - global_position)
+		pushes.append([lift, damping, at])
+	var cap: float = profile["max_lift_ratio"] * mass * GRAVITY
+	var lift_scale := minf(1.0, cap / maxf(total_buoyancy, 0.001))
+	for push: Array in pushes:
+		apply_force(Vector3.UP * ((push[0] as float) * lift_scale + (push[1] as float)), (push[2] as Vector3) - global_position)
 
 	submerged_ratio = total_buoyancy / (mass * GRAVITY)
 	var wet := clampf(submerged_ratio, 0.0, 1.0)
@@ -312,6 +368,7 @@ func _physics_process(delta: float) -> void:
 	apply_torque(xf.basis * damp * wet)
 
 	_apply_wind(xf)
+	_update_flood(_powerhead_under(xf), delta)
 	_apply_thrust(xf, delta)
 	_update_water(xf, delta)
 	_apply_mooring(delta)
@@ -335,6 +392,8 @@ func _update_controls(delta: float) -> void:
 	var target := 0.0
 	if engine_running:
 		target = lerpf(IDLE_RPM, MAX_RPM, absf(throttle)) * lerpf(1.25, 1.0, prop_grip)
+		# Water in the engine drags the revs down, and a misfire stumbles them.
+		target *= lerpf(1.0, 0.7, engine_flood) * (0.55 if _misfire > 0.0 else 1.0)
 	rpm = lerpf(rpm, minf(target, MAX_RPM * 1.15), 1.0 - exp(-(3.0 if target > rpm else 1.5) * delta))
 
 
@@ -372,6 +431,7 @@ func _apply_thrust(xf: Transform3D, delta: float) -> void:
 		grip_sum += grip
 		var dir: Vector3 = Basis(Vector3.UP, steer * (e["steer"] as float)) * (e["forward"] as Vector3)
 		var power: float = throttle if throttle >= 0.0 else throttle * profile["reverse_thrust_factor"]
+		power *= engine_power()
 		# A propeller pushes less the faster the water comes at it.
 		var inflow := (xf.basis.inverse() * linear_velocity).dot(e["forward"] as Vector3) * signf(power)
 		var pitch: float = e.get("pitch_speed", 14.0)
@@ -383,21 +443,42 @@ func _apply_thrust(xf: Transform3D, delta: float) -> void:
 		var local_at: Vector3 = e["pos"]
 		local_at.y = lerpf(local_at.y, center_of_mass.y, profile["thrust_height_assist"])
 		apply_force(xf.basis * dir * (e["thrust"] as float) * power * grip * load, xf * local_at - global_position)
-		# A powerhead under water drowns the engine.
-		var head: Vector3 = xf * (e.get("head", e["pos"]) as Vector3)
-		if head.y < Waves.height_at(head.x, head.z) - 0.05:
-			_head_wet_time += delta
-		else:
-			_head_wet_time = 0.0
 	prop_grip = grip_sum / maxf(stats["engines"].size(), 1)
-	if _head_wet_time > 0.6:
-		set_engine_running(false)
-		EventBus.notify.emit("The engine goes under and dies.")
-		return
 	if fuel_l <= 0.0:
 		set_engine_running(false)
 		fuel_empty.emit()
 		EventBus.notify.emit("The engine coughs and dies. Out of fuel.")
+
+
+## Is any engine's powerhead (its top) under the water?
+func _powerhead_under(xf: Transform3D) -> bool:
+	for e: Dictionary in stats["engines"]:
+		var head: Vector3 = xf * (e.get("head", e["pos"]) as Vector3)
+		if head.y < Waves.height_at(head.x, head.z) - 0.05:
+			return true
+	return false
+
+
+func _update_flood(wet: bool, delta: float) -> void:
+	_head_wet = wet
+	_misfire = maxf(_misfire - delta, 0.0)
+	if stats["engines"].is_empty():
+		return
+	var before := engine_flood
+	if wet:
+		engine_flood = minf(engine_flood + (FLOOD_RATE_RUNNING if engine_running else FLOOD_RATE_OFF) * delta, 1.0)
+	elif not hydrolocked:
+		engine_flood = maxf(engine_flood - (CLEAR_RATE_RUNNING if engine_running else CLEAR_RATE_OFF) * delta, 0.0)
+	if engine_running:
+		# A wet engine misfires, more often the wetter it is.
+		if engine_flood > 0.2 and _misfire <= 0.0 and _flood_rng.randf() < engine_flood * 2.5 * delta:
+			_misfire = _flood_rng.randf_range(0.12, 0.35)
+		if engine_flood >= 1.0:
+			hydrolocked = true
+			set_engine_running(false)
+			EventBus.notify.emit("The engine chokes on water and seizes: hydrolocked. Get it above water, then crank it clear with R.")
+		elif before < 0.5 and engine_flood >= 0.5:
+			EventBus.notify.emit("The engine is sputtering, it's taking on water!")
 
 
 ## Water over the gunwale comes in; the pump takes it out; it gathers in the
@@ -505,6 +586,37 @@ func _add_helm_seat() -> void:
 	_board_area.position = Vector3(centre.x, (stats["helm_position"] as Vector3).y + 0.6, centre.z)
 	add_child(_board_area)
 	_board_area.interacted.connect(_on_helm_requested)
+
+
+## Swimming beside an upturned boat, E rolls it back over. It comes up
+## swamped, so there is bailing to do.
+func _add_righting() -> void:
+	_right_area = Interactable.new()
+	_right_area.name = "RightBoat"
+	_right_area.prompt = "Roll the boat back upright"
+	_right_area.enabled = false
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	var reach := maxf(stats["length"], stats["beam"]) + 2.5
+	box.size = Vector3(reach, 3.0, reach)
+	shape.shape = box
+	_right_area.add_child(shape)
+	add_child(_right_area)
+	_right_area.interacted.connect(func(_by): right_up())
+
+
+func is_capsized() -> bool:
+	return global_basis.y.y < 0.2
+
+
+func right_up() -> void:
+	var at := global_position
+	at.y = Waves.height_at(at.x, at.z) + VesselBuilder.float_height(stats)
+	global_transform = Transform3D(Basis(Vector3.UP, global_rotation.y), at)
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	water_l = maxf(water_l, stats["bilge_capacity_l"] * 0.4)
+	EventBus.notify.emit("You heave the boat back over. It's half full of water: bail it out (B) before you go.")
 
 
 func _on_helm_requested(by: Node) -> void:

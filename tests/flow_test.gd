@@ -42,7 +42,7 @@ func _ready() -> void:
 		_open_workshop, _undo_redo, _delete_mode, _build_rest, _launch,
 		_board, _drive, _cut_and_leave_far, _standing_in_boat, _drive_back, _leave_at_dock,
 		_open_workshop, _remove_and_relaunch,
-		_walk_into_sea, _swimming, _save_and_load, _pause_menu, _cheats, _done,
+		_capsize_and_right, _walk_into_sea, _swimming, _save_and_load, _pause_menu, _cheats, _done,
 	]
 
 
@@ -252,6 +252,34 @@ func _drive() -> void:
 	_check(absf(motor.rotation.y - deg_to_rad(32.0)) < 0.01, "the motor swings as you steer")
 	boat.set(&"steer", 0.0)
 	boat.call(&"_process", 0.0)
+	# Dunking the engine floods it bit by bit: it loses power and keeps
+	# running for a while, then hydrolocks and has to be cranked clear.
+	var step := 1.0 / 60.0
+	boat.set(&"engine_flood", 0.0)
+	boat.set(&"hydrolocked", false)
+	boat.call(&"set_engine_running", true)
+	for i in 60:
+		boat.call(&"_update_flood", true, step)
+	var f: float = boat.get(&"engine_flood")
+	_check(f > 0.3 and f < 0.5 and boat.get(&"engine_running"), "a second under water floods the engine %d%% but it keeps running" % roundi(f * 100.0))
+	boat.set(&"_misfire", 0.0)
+	_check(boat.call(&"engine_power") < 0.8, "a flooded engine loses power")
+	for i in 120:
+		boat.call(&"_update_flood", true, step)
+	_check(boat.get(&"hydrolocked") and not boat.get(&"engine_running"), "a fully flooded engine hydrolocks and stops")
+	boat.call(&"set_engine_running", true)
+	_check(not boat.get(&"engine_running") and is_equal_approx(boat.get(&"engine_flood"), 1.0), "can't start or crank it while it is under water")
+	for i in 60:
+		boat.call(&"_update_flood", false, step)
+	_check(is_equal_approx(boat.get(&"engine_flood"), 1.0), "a locked engine does not clear by itself")
+	for i in 4:
+		boat.call(&"set_engine_running", true)
+	_check(not boat.get(&"hydrolocked") and not boat.get(&"engine_running") and boat.get(&"engine_flood") < 0.45,
+			"cranking it over clears the lock (%d%% left)" % roundi(boat.get(&"engine_flood") * 100.0))
+	for i in 600:
+		boat.call(&"_update_flood", false, step)
+	_check(boat.get(&"engine_flood") < 0.3, "left above water, the engine dries out")
+	boat.set(&"engine_flood", 0.0)
 	boat.call(&"set_engine_running", true)
 	boat.set(&"throttle", 1.0)
 	# Start clear of the dock (leaving the berth needs steering, which this
@@ -263,6 +291,7 @@ func _drive() -> void:
 
 func _cut_and_leave_far() -> void:
 	var boat: RigidBody3D = main.get(&"player_boat")
+	_check(boat.global_basis.y.y > 0.8, "still upright after the run (it used to be thrown over)")
 	boat.set(&"throttle", 0.0)
 	player.call(&"leave_helm")  # at sea: stand up in the boat
 	_check(player.get(&"state") == 0, "can get up from the helm at sea")
@@ -372,6 +401,19 @@ func _compass_shows_town() -> void:
 				found = true
 		_check(found, "compass lists Harbour Town")
 	_check(main.get_node("PersonalDock").get_node_or_null("TownSignpost") != null, "dock has a signpost to town")
+
+
+func _capsize_and_right() -> void:
+	var boat: RigidBody3D = main.get(&"player_boat")
+	var right: Interactable = boat.get_node("RightBoat")
+	_check(not right.enabled, "nothing to right while the boat is upright")
+	boat.global_transform = Transform3D(Basis(Vector3.FORWARD, PI), boat.global_position)
+	await get_tree().physics_frame
+	_check(boat.call(&"is_capsized") and right.enabled, "an upturned boat can be rolled back over")
+	right.interact(player)
+	_check(boat.global_basis.y.y > 0.99 and boat.get(&"water_l") > 0.0, "rolled upright, swamped")
+	boat.set(&"water_l", 0.0)
+	_wait = 5
 
 
 func _walk_into_sea() -> void:

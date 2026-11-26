@@ -41,6 +41,8 @@ static func save(world: Node) -> bool:
 		var b := _place_of(boat)
 		b["fuel_l"] = boat.get(&"fuel_l")
 		b["water_l"] = boat.get(&"water_l")
+		b["engine_flood"] = boat.get(&"engine_flood")
+		b["hydrolocked"] = boat.get(&"hydrolocked")
 		data["boat"] = b
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:

@@ -11,6 +11,7 @@ var _activity: Label
 var _money: Label
 var _job: Label
 var _water: Label
+var _flood: Label
 var _money_flash := 0.0
 var _vessel: Node
 var _notice_time := 0.0
@@ -38,6 +39,8 @@ func _ready() -> void:
 	_money.position += Vector2(-24, 18)
 	_water = _make_label(Control.PRESET_CENTER_BOTTOM, 22)
 	_water.position.y -= 290
+	_flood = _make_label(Control.PRESET_CENTER_BOTTOM, 22)
+	_flood.position.y -= 330
 	_job = _make_label(Control.PRESET_TOP_RIGHT, 18)
 	_job.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_job.position += Vector2(-24, 60)
@@ -78,6 +81,7 @@ func _process(delta: float) -> void:
 		_activity.modulate = Color(0.75, 0.95, 1.0)
 		_activity.add_theme_font_size_override(&"font_size", 22)
 	_update_water_warning()
+	_update_flood()
 	_update_job()
 	_update_compass()
 	if _money_flash > 0.0:
@@ -98,6 +102,21 @@ func _update_water_warning() -> void:
 		_water.modulate = Color(1, 0.55, 0.4) if frac > 0.4 else Color(0.7, 0.9, 1)
 	else:
 		_water.text = ""
+
+
+## How much water is in the engine, as a meter that turns from amber to red.
+func _update_flood() -> void:
+	if not is_instance_valid(_vessel) or _vessel.get(&"engine_flood") < 0.005:
+		_flood.text = ""
+		return
+	var f: float = _vessel.get(&"engine_flood")
+	var bars := roundi(f * 10.0)
+	var meter := "■".repeat(bars) + "□".repeat(10 - bars)
+	if _vessel.get(&"hydrolocked"):
+		_flood.text = "Engine HYDROLOCKED  %s %d%%  (R to crank it clear)" % [meter, roundi(f * 100.0)]
+	else:
+		_flood.text = "Engine flooded  %s %d%%" % [meter, roundi(f * 100.0)]
+	_flood.modulate = Color(1.0, 0.85, 0.35).lerp(Color(1.0, 0.35, 0.3), f)
 
 
 static func _compass(v: Vector3) -> String:
