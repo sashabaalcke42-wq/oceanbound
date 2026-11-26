@@ -21,14 +21,20 @@ func refuel() -> float:
 		EventBus.notify.emit("Bring your boat alongside to fill it up.")
 		return 0.0
 	var room: float = boat.stats["fuel_capacity"] - boat.fuel_l
-	if room < 0.1:
+	if room < 0.05:
 		EventBus.notify.emit("The tank is already full.")
 		return 0.0
-	var litres := minf(room, floorf(float(Economy.balance) / PRICE_PER_LITRE))
-	if litres < 1.0:
-		EventBus.notify.emit("You can't afford any fuel.")
+	# Top up whatever the tank has room for, even under a litre; only money
+	# limits it. (Before, a tank less than a litre short of full was refused
+	# as "can't afford", however much money you had.)
+	var litres := minf(room, float(Economy.balance) / PRICE_PER_LITRE)
+	var cost := ceili(litres * PRICE_PER_LITRE - 0.0001)
+	if cost > Economy.balance:
+		litres = floorf(float(Economy.balance) / PRICE_PER_LITRE * 10.0) / 10.0
+		cost = ceili(litres * PRICE_PER_LITRE - 0.0001)
+	if litres < 0.05 or cost < 1:
+		EventBus.notify.emit("You can't afford any fuel. It's $%d a litre." % PRICE_PER_LITRE)
 		return 0.0
-	var cost := ceili(litres * PRICE_PER_LITRE)
 	Economy.spend(cost, "Fuel")
 	boat.fuel_l += litres
 	EventBus.notify.emit("Added %.1f L of fuel for $%d." % [litres, cost])
