@@ -52,6 +52,15 @@ func _process(delta: float) -> void:
 		var boat: Node = p.call(&"current_boat")
 		var speed: float = (boat as RigidBody3D).linear_velocity.length() if boat else 0.0
 		var want := lerpf(ZOOM_FOOT, ZOOM_FAST, clampf(speed / 7.0, 0.0, 1.0))
+		# Out at sea, zoom out until the nearest named place is on the chart,
+		# so it never shows only empty water.
+		var nearest := INF
+		for id in Locations.ids():
+			var d := Locations.position_of(id) - p.global_position
+			nearest = minf(nearest, Vector2(d.x, d.z).length())
+		if nearest < INF:
+			want = maxf(want, nearest * 2.4)
+		want = minf(want, float(_island.get(&"world_size")) * 0.9)
 		_span = lerpf(_span, want, 1.0 - exp(-1.5 * delta))
 	queue_redraw()
 
