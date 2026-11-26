@@ -196,12 +196,12 @@ func _update_compass() -> void:
 		var p := Locations.position_of(ids[i])
 		var flat := Vector3(p.x - from.x, 0.0, p.z - from.z)
 		var d := flat.length()
-		var gold := ids[i] == target
+		var gold: bool = ids[i] == target
 		l.modulate = Color(1.0, 0.82, 0.3) if gold else (Color(0.6, 0.95, 1.0) if ids[i] == &"town_quay" else Color(1, 1, 1, 0.85))
 		_place_on_compass(l, bearing_of(flat), heading, 20.0)
 		l.set_meta(&"name", "%s  %d m" % [Locations.name_of(ids[i]), roundi(d)])
 		# Nearer the middle of the bar, and the job's target, get the name.
-		var rel := absf(wrapf(bearing_of(flat) - heading, -180.0, 180.0))
+		var rel: float = absf(wrapf(bearing_of(flat) - heading, -180.0, 180.0))
 		l.set_meta(&"priority", rel - (1000.0 if gold else 0.0))
 	_name_marks()
 
