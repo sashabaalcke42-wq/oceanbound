@@ -69,6 +69,14 @@ func _process(delta: float) -> void:
 		_instruments.text += "\nWind  %d kn from %s" % [roundi(wind.length() * 1.944), _compass(-wind)]
 	else:
 		_instruments.text = ""
+	# Something needing a quick key press ("FISH ON!  Press F now!") pulses gold.
+	if _activity.text.ends_with("!"):
+		var k := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
+		_activity.modulate = Color(1.0, 0.85, 0.3).lerp(Color.WHITE, k * 0.5)
+		_activity.add_theme_font_size_override(&"font_size", 34)
+	else:
+		_activity.modulate = Color(0.75, 0.95, 1.0)
+		_activity.add_theme_font_size_override(&"font_size", 22)
 	_update_water_warning()
 	_update_job()
 	_update_compass()

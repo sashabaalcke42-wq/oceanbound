@@ -33,6 +33,18 @@ func _enter_tree() -> void:
 			InputMap.action_add_event(action, ev)
 
 
+func _ready() -> void:
+	# The window opens large (2304 x 1296) and maximised; on a smaller screen,
+	# keep the un-maximised size inside the screen too.
+	if DisplayServer.get_name() == "headless":
+		return
+	var usable := DisplayServer.screen_get_usable_rect()
+	var size := DisplayServer.window_get_size()
+	if size.x > usable.size.x or size.y > usable.size.y:
+		var k := minf(float(usable.size.x) / size.x, float(usable.size.y) / size.y)
+		DisplayServer.window_set_size(Vector2i(size * k))
+
+
 ## F11 switches between fullscreen and a maximised window, from anywhere.
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"fullscreen_toggle"):

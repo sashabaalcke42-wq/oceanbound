@@ -6,6 +6,7 @@ extends Node
 var main: Node3D
 var player: CharacterBody3D
 var fishing: Node
+var _activity := ""
 var _steps: Array[Callable] = []
 var _wait := 0
 var _busy := false
@@ -20,6 +21,7 @@ func _ready() -> void:
 	player = main.get_node("Player")
 	fishing = player.get_node("Fishing")
 	fishing.rng.seed = 7
+	EventBus.activity_changed.connect(func(t: String): _activity = t)
 	_steps = [
 		_start, _shop, _shop_broke,
 		_accept_cargo, _at_pickup, _check_pickup, _at_dropoff, _check_dropoff,
@@ -165,7 +167,10 @@ func _cast() -> void:
 
 
 func _bite() -> void:
+	_check(fishing.cast_preview() > 0.5, "facing the water from the dock, fishing is possible")
+	_check(_activity.begins_with("F: Fish here"), "the screen says F fishes here (\"%s\")" % _activity)
 	_check(fishing.cast(), "cast from the end of the dock")
+	_check(_activity.contains("Wait for the float"), "the screen says what to do next")
 	_check(fishing.depth > 0.5, "line is in the water (%.1f m deep)" % fishing.depth)
 	fishing.timer = 0.0
 	_wait = 3
@@ -173,6 +178,8 @@ func _bite() -> void:
 
 func _land() -> void:
 	_check(fishing.state == 2, "a fish bites")
+	_check(_activity.contains("Press F now"), "the bite is called out on screen")
+	_check(fishing.get(&"_line").visible and fishing.get(&"_rod").visible, "rod and line are shown")
 	var bait := Inventory.count(&"bait_pack")
 	var fish: StringName = fishing.land()
 	_check(fish != &"" and Inventory.count(fish) == 1, "landed a %s" % fish)
