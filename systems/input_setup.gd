@@ -19,6 +19,7 @@ const BINDINGS := {
 	"bail": [KEY_B],
 	"map_toggle": [KEY_M],
 	"fullscreen_toggle": [KEY_F11],
+	"cheat_menu": [KEY_F1],
 }
 
 
