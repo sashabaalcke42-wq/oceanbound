@@ -46,6 +46,8 @@ const DEFAULT_PROFILE := {
 	"steer_rate": 3.0,
 	## Air drag on the part above the water (Cd times area fraction).
 	"windage": 0.9,
+	## Most lift the water can give, in boat weights (see the buoyancy loop).
+	"max_lift_ratio": 2.0,
 	## How readily water pours in over a submerged gunwale.
 	"ingress_rate": 1.7,
 	## Mooring lines: spring (per kg of boat) and damping, and slack in metres.
@@ -72,6 +74,7 @@ var water_l := 0.0
 ## Where the boat is tied up, if it is.
 var moored := false
 var _board_area: Interactable
+var _right_area: Interactable
 var mooring_transform := Transform3D()
 
 ## Set every frame by whoever is at the helm (player or AI pilot).
@@ -120,6 +123,7 @@ func setup(p_design: VesselDesign, p_stats: Dictionary) -> void:
 	can_sleep = false
 	continuous_cd = false
 	_add_helm_seat()
+	_add_righting()
 	var fx := preload("res://vessel/vessel_effects.gd").new()
 	fx.name = "Effects"
 	add_child(fx)
@@ -301,12 +305,20 @@ func _physics_process(delta: float) -> void:
 		# Only offered to someone who is not already aboard.
 		var p := get_tree().get_first_node_in_group(&"player")
 		_board_area.enabled = _helm_occupant == null and p != null and p.call(&"current_boat") != self
+	if _right_area:
+		_right_area.enabled = is_capsized()
 	var xf := global_transform
 	var com_world := xf * center_of_mass
 	var area: float = maxf(stats["waterplane_area"], 0.05)
 	var total_buoyancy := 0.0
 
-	# Buoyancy and heave damping, per hull column.
+	# Buoyancy and heave damping, per hull column. An open boat counts the air
+	# inside it as buoyant, so a boat shoved under (by a wave, a jetty or a
+	# bump on the shore) would get many times its weight in lift and be
+	# fired out of the water like a cork, often landing upside down. Real
+	# boats swamp instead, so the lift is capped at a few times the weight;
+	# the water coming in over the side does the rest.
+	var pushes: Array = []
 	for col: Dictionary in stats["columns"]:
 		var p: Vector3 = xf * (col["pos"] as Vector3)
 		var hh: float = col["half_height"]
@@ -320,7 +332,11 @@ func _physics_process(delta: float) -> void:
 		var at := Vector3(p.x, p.y - hh + hh * frac, p.z)
 		var v_point := linear_velocity + angular_velocity.cross(at - com_world)
 		var damping: float = -profile["heave_damping"] * (col["area"] as float) * frac * v_point.y
-		apply_force(Vector3.UP * (lift + damping), at - global_position)
+		pushes.append([lift, damping, at])
+	var cap: float = profile["max_lift_ratio"] * mass * GRAVITY
+	var lift_scale := minf(1.0, cap / maxf(total_buoyancy, 0.001))
+	for push: Array in pushes:
+		apply_force(Vector3.UP * ((push[0] as float) * lift_scale + (push[1] as float)), (push[2] as Vector3) - global_position)
 
 	submerged_ratio = total_buoyancy / (mass * GRAVITY)
 	var wet := clampf(submerged_ratio, 0.0, 1.0)
@@ -570,6 +586,37 @@ func _add_helm_seat() -> void:
 	_board_area.position = Vector3(centre.x, (stats["helm_position"] as Vector3).y + 0.6, centre.z)
 	add_child(_board_area)
 	_board_area.interacted.connect(_on_helm_requested)
+
+
+## Swimming beside an upturned boat, E rolls it back over. It comes up
+## swamped, so there is bailing to do.
+func _add_righting() -> void:
+	_right_area = Interactable.new()
+	_right_area.name = "RightBoat"
+	_right_area.prompt = "Roll the boat back upright"
+	_right_area.enabled = false
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	var reach := maxf(stats["length"], stats["beam"]) + 2.5
+	box.size = Vector3(reach, 3.0, reach)
+	shape.shape = box
+	_right_area.add_child(shape)
+	add_child(_right_area)
+	_right_area.interacted.connect(func(_by): right_up())
+
+
+func is_capsized() -> bool:
+	return global_basis.y.y < 0.2
+
+
+func right_up() -> void:
+	var at := global_position
+	at.y = Waves.height_at(at.x, at.z) + VesselBuilder.float_height(stats)
+	global_transform = Transform3D(Basis(Vector3.UP, global_rotation.y), at)
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	water_l = maxf(water_l, stats["bilge_capacity_l"] * 0.4)
+	EventBus.notify.emit("You heave the boat back over. It's half full of water: bail it out (B) before you go.")
 
 
 func _on_helm_requested(by: Node) -> void:

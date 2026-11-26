@@ -42,7 +42,7 @@ func _ready() -> void:
 		_open_workshop, _undo_redo, _delete_mode, _build_rest, _launch,
 		_board, _drive, _cut_and_leave_far, _standing_in_boat, _drive_back, _leave_at_dock,
 		_open_workshop, _remove_and_relaunch,
-		_walk_into_sea, _swimming, _save_and_load, _pause_menu, _done,
+		_capsize_and_right, _walk_into_sea, _swimming, _save_and_load, _pause_menu, _done,
 	]
 
 
@@ -263,6 +263,7 @@ func _drive() -> void:
 
 func _cut_and_leave_far() -> void:
 	var boat: RigidBody3D = main.get(&"player_boat")
+	_check(boat.global_basis.y.y > 0.8, "still upright after the run (it used to be thrown over)")
 	boat.set(&"throttle", 0.0)
 	player.call(&"leave_helm")  # at sea: stand up in the boat
 	_check(player.get(&"state") == 0, "can get up from the helm at sea")
@@ -372,6 +373,19 @@ func _compass_shows_town() -> void:
 				found = true
 		_check(found, "compass lists Harbour Town")
 	_check(main.get_node("PersonalDock").get_node_or_null("TownSignpost") != null, "dock has a signpost to town")
+
+
+func _capsize_and_right() -> void:
+	var boat: RigidBody3D = main.get(&"player_boat")
+	var right: Interactable = boat.get_node("RightBoat")
+	_check(not right.enabled, "nothing to right while the boat is upright")
+	boat.global_transform = Transform3D(Basis(Vector3.FORWARD, PI), boat.global_position)
+	await get_tree().physics_frame
+	_check(boat.call(&"is_capsized") and right.enabled, "an upturned boat can be rolled back over")
+	right.interact(player)
+	_check(boat.global_basis.y.y > 0.99 and boat.get(&"water_l") > 0.0, "rolled upright, swamped")
+	boat.set(&"water_l", 0.0)
+	_wait = 5
 
 
 func _walk_into_sea() -> void:
