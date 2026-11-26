@@ -92,6 +92,22 @@ func remove_at(cell: Vector3i) -> bool:
 	return true
 
 
+## Removes every block covering any of `cells`, as one undoable step.
+## Returns how many blocks it removed.
+func remove_many(cells: Array[Vector3i]) -> int:
+	var entries: Array[Dictionary] = []
+	for c in cells:
+		if _occupancy.has(c):
+			var e := design.blocks[_occupancy[c]]
+			if not entries.any(func(x): return is_same(x, e)):
+				entries.append(e)
+	if entries.is_empty():
+		return 0
+	_apply_remove(entries)
+	_push_undo({"op": "remove", "entries": entries})
+	return entries.size()
+
+
 func can_undo() -> bool:
 	return not _undo.is_empty()
 

@@ -32,16 +32,17 @@ class ErrorCounter extends Logger:
 
 func _ready() -> void:
 	OS.add_logger(_errors)
+	SaveGame.enabled = false  # a fresh world, and no save left behind
 	main = load("res://world/main.tscn").instantiate()
 	add_child(main)
 	player = main.get_node("Player")
 	_steps = [
 		_walk_ashore, _compass_shows_town,
 		_open_workshop, _place_some, _close_workshop,            # leave unfinished
-		_open_workshop, _undo_redo, _build_rest, _launch,
+		_open_workshop, _undo_redo, _delete_mode, _build_rest, _launch,
 		_board, _drive, _cut_and_leave_far, _standing_in_boat, _drive_back, _leave_at_dock,
 		_open_workshop, _remove_and_relaunch,
-		_walk_into_sea, _swimming, _done,
+		_walk_into_sea, _swimming, _save_and_load, _pause_menu, _done,
 	]
 
 
@@ -99,6 +100,80 @@ func _undo_redo() -> void:
 		_press(name)
 	_check(ed.design.blocks.size() == before - 2, "undo and clear buttons work mid-tutorial")
 	_check(_errors.errors.is_empty(), "no errors from the workshop buttons")
+	_wait = 5
+
+
+## Delete mode: hovering a piece shows it, a click removes it, a drag
+## removes a whole row as one undo step. The placing ghost is the real piece.
+func _delete_mode() -> void:
+	var ws := _ws()
+	var ed: DesignEditor = ws.get(&"editor")
+	ed.clear_all()
+	for x in range(-2, 3):
+		ed.place(&"hull_aluminium", Vector3i(x, 0, 0), 0)
+	ws.set(&"selected_block", &"outboard_15hp")
+	Inventory.add(&"outboard_15hp")
+	ws.set(&"_hover_valid", true)
+	ws.set(&"_hover_target", Vector3i(0, 1, 3))
+	ws.call(&"_update_ghost")
+	var ghost: MeshInstance3D = ws.get(&"_ghost_piece")
+	_check(ghost.visible and ghost.mesh != null and ghost.mesh.get_surface_count() > 0, "the ghost shows the piece itself")
+	_press("Delete")
+	_check(ws.get(&"delete_mode"), "Delete button switches to delete mode")
+	ws.set(&"_hover_has_block", true)
+	ws.set(&"_hover_block", Vector3i(-2, 0, 0))
+	ws.call(&"_update_ghost")
+	_check(ghost.visible, "the piece to delete is highlighted")
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	ws.call(&"_on_mouse_button", click)
+	ws.set(&"_hover_block", Vector3i(0, 0, 0))
+	click = click.duplicate()
+	click.pressed = false
+	ws.call(&"_on_mouse_button", click)
+	_check(ed.design.blocks.size() == 2, "dragging in delete mode removes the row (%d left)" % ed.design.blocks.size())
+	ed.undo()
+	_check(ed.design.blocks.size() == 5, "one undo brings the whole row back")
+	_press("Build")
+	_check(not ws.get(&"delete_mode"), "Build button goes back to placing")
+	Inventory.remove(&"outboard_15hp")
+	_wait = 5
+
+
+func _save_and_load() -> void:
+	SaveGame.enabled = true
+	SaveGame.path = "user://test_save.json"
+	SaveGame.delete()
+	var money := Economy.balance
+	var fish_before := Inventory.count(&"bait_pack")
+	_check(SaveGame.save(main), "the game saves")
+	_check(SaveGame.exists(), "a save file is written")
+	Economy.reset(1)
+	Inventory.remove(&"bait_pack", fish_before)
+	var boat_was: Vector3 = (main.get(&"player_boat") as Node3D).global_position
+	(main.get(&"player_boat") as Node).queue_free()
+	main.set(&"player_boat", null)
+	await get_tree().physics_frame
+	main.call(&"load_game")
+	_check(Economy.balance == money, "money comes back from the save")
+	_check(Inventory.count(&"bait_pack") == fish_before, "belongings come back")
+	var boat: Node3D = main.get(&"player_boat")
+	_check(boat != null and Vector2(boat.global_position.x - boat_was.x, boat.global_position.z - boat_was.z).length() < 1.0,
+			"the boat is back where it was")
+	SaveGame.delete()
+	SaveGame.enabled = false
+	_wait = 30
+
+
+func _pause_menu() -> void:
+	var esc := InputEventAction.new()
+	esc.action = &"toggle_mouse"
+	esc.pressed = true
+	main.call(&"_unhandled_input", esc)
+	_check(main.get(&"pause_menu") != null and get_tree().paused, "Esc pauses with a menu")
+	(main.get(&"pause_menu") as Node).call(&"resume")
+	_check(not get_tree().paused and main.get(&"pause_menu") == null, "Continue carries on")
 	_wait = 5
 
 

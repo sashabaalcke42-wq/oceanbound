@@ -5,6 +5,8 @@ extends Control
 
 const DESIGN_DIR := "user://designs/"
 
+var _build_btn: Button
+var _delete_btn: Button
 var workshop: Node
 
 var _blocks_box: VBoxContainer
@@ -31,6 +33,11 @@ func _ready() -> void:
 func refresh() -> void:
 	if workshop == null or _stats == null:
 		return
+	if _build_btn:
+		var deleting: bool = workshop.get(&"delete_mode")
+		_build_btn.set_pressed_no_signal(not deleting)
+		_delete_btn.set_pressed_no_signal(deleting)
+		_delete_btn.add_theme_color_override(&"font_color", Color(1.0, 0.55, 0.5) if deleting else Color(0.85, 0.85, 0.85))
 	for id: StringName in _block_buttons:
 		var def := BlockLibrary.get_block(id)
 		var b: Button = _block_buttons[id]
@@ -150,6 +157,12 @@ func _build_bottom_bar() -> void:
 	_name_edit.text_submitted.connect(func(t: String): _rename(t))
 	_name_edit.focus_exited.connect(func(): _rename(_name_edit.text))
 	row.add_child(_name_edit)
+	_build_btn = _button(row, "Build", func(): workshop.call(&"set_delete_mode", false))
+	_build_btn.toggle_mode = true
+	_build_btn.tooltip_text = "Left click places the selected piece (X switches)"
+	_delete_btn = _button(row, "Delete", func(): workshop.call(&"set_delete_mode", true))
+	_delete_btn.toggle_mode = true
+	_delete_btn.tooltip_text = "Left click removes the piece under the mouse; drag to remove a rectangle (X switches)"
 	_button(row, "Undo", func(): workshop.get(&"editor").undo())
 	_button(row, "Redo", func(): workshop.get(&"editor").redo())
 	_button(row, "Clear", func(): workshop.get(&"editor").clear_all())
@@ -159,7 +172,7 @@ func _build_bottom_bar() -> void:
 	launch.add_theme_color_override(&"font_color", Color(0.55, 1.0, 0.65))
 	_button(row, "Close", func(): workshop.call(&"close"))
 	var help := Label.new()
-	help.text = "Left click: place (drag for a rectangle)   Right click: remove   Right drag: orbit   Wheel: zoom   R: rotate   T: tilt   Ctrl+Z: undo"
+	help.text = "Left click: place, or in Delete mode remove (drag for a rectangle)   X: build / delete   Right click: remove   Right drag: orbit   Wheel: zoom   R: rotate   T: tilt   Ctrl+Z: undo"
 	help.add_theme_font_size_override(&"font_size", 13)
 	help.modulate = Color(1, 1, 1, 0.75)
 	box.add_child(help)

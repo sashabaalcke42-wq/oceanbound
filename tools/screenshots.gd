@@ -34,6 +34,7 @@ func _ready() -> void:
 		if arg.begins_with("--out="):
 			out_dir = arg.trim_prefix("--out=")
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	SaveGame.enabled = false  # a fresh world, and no save left behind
 	main = load("res://world/main.tscn").instantiate()
 	add_child(main)
 	_cam = Camera3D.new()

@@ -30,7 +30,12 @@ See `docs/` for architecture notes and decisions.
 | V | First or third person | First or third person |
 | M | Full map | Full map |
 | F11 | Fullscreen on or off | Fullscreen on or off |
-| Esc | Free or capture the mouse | |
+| Esc | Pause menu: continue, save, save and quit, new game | Pause menu |
+
+**Saving.** Esc opens the pause menu, with Save game and Save and quit.
+Closing the window also saves. Next time you start, you carry on where you
+left off (money, belongings, your boat and where it is); the job board is
+dealt afresh. New game in the pause menu starts over.
 
 Your boat is tied up alongside your dock. Walk up beside it and press **E**
 to step aboard and take the helm. Bring it in slowly next to any jetty and
@@ -67,12 +72,13 @@ outline showing where the blocks go.
 
 | Input | In the workshop |
 | --- | --- |
-| Left click | Place a block (click and drag to place a rectangle) |
+| Left click | Place the piece shown by the ghost (drag for a rectangle); in Delete mode, remove the piece shown in red (drag for a rectangle) |
 | Right click | Remove a block |
 | Right drag, wheel | Orbit and zoom the camera |
 | R / T | Rotate / tilt the block |
 | C | Next colour |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
+| X | Switch between Build and Delete mode |
 | Esc | Close the workshop |
 
 The panel on the right shows the boat's weight, draft, freeboard and
