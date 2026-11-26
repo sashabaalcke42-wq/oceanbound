@@ -163,7 +163,7 @@ func open_workshop() -> void:
 	workshop.connect(&"launch_requested", _on_launch_requested)
 	player.call(&"set_in_menu", true)
 	workshop.call(&"open", design, GameState.FACILITIES[&"personal_dock"],
-			not GameState.tutorial_done and design.blocks.is_empty())
+			not GameState.tutorial_done)  # also picks up an unfinished build
 
 
 ## Close without launching: the design is kept, and launched if it can float.

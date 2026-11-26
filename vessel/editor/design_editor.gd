@@ -198,22 +198,29 @@ func _new_entry(id: StringName, origin: Vector3i, rot: int, color: Color) -> Dic
 	return {"id": id, "cell": origin, "rot": rot, "color": c}
 
 
+## The design and its occupancy are brought up to date before the inventory
+## changes, because the inventory's own signal makes the workshop screen read
+## the design straight away.
 func _apply_add(entries: Array) -> void:
 	for e in entries:
-		Inventory.remove(e["id"])
 		design.blocks.append(e)
 	_rebuild_occupancy()
+	for e in entries:
+		Inventory.remove(e["id"])
 	changed.emit()
 
 
 func _apply_remove(entries: Array) -> void:
+	var removed: Array[StringName] = []
 	for e in entries:
 		for i in design.blocks.size():
 			if is_same(design.blocks[i], e):
 				design.blocks.remove_at(i)
-				Inventory.add(e["id"])
+				removed.append(e["id"])
 				break
 	_rebuild_occupancy()
+	for id in removed:
+		Inventory.add(id)
 	changed.emit()
 
 
