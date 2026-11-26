@@ -16,9 +16,16 @@ const RUN_SPEED := 6.2
 const SWIM_SPEED := 1.3
 const SWIM_SPRINT := 2.1
 const JUMP_VELOCITY := 4.4
-const GROUND_ACCEL := 9.0    # m/s² to reach walking speed; feels weighty
-const GROUND_DECEL := 12.0
-const AIR_ACCEL := 1.5
+const GROUND_ACCEL := 22.0   # m/s² towards the wanted speed: quick but not instant
+const GROUND_DECEL := 28.0
+const AIR_ACCEL := 4.0
+## Grace periods: a jump still works just after walking off an edge, and a
+## jump pressed just before landing happens on landing.
+const COYOTE_TIME := 0.12
+const JUMP_BUFFER := 0.15
+## At the helm, the camera swings back behind the boat after this long
+## without the mouse moving.
+const CAMERA_FOLLOW_DELAY := 1.2
 const MOUSE_SENSITIVITY := 0.0025
 const BODY_MASS := 80.0
 const FOOT_ARM := 3.2
@@ -54,6 +61,10 @@ var _payload_pos := Vector3(INF, INF, INF)
 var _ground_vel := Vector3.ZERO
 ## Seconds since we last touched the floor (smooths over tiny hops on a deck).
 var _air_time := 0.0
+var _jump_buffer := 0.0
+var _mouse_idle := 0.0
+## What E does at the helm right now, shown as the prompt.
+var _helm_prompt := ""
 
 @onready var _pivot: Node3D = $CameraPivot
 @onready var _arm: SpringArm3D = $CameraPivot/SpringArm3D
@@ -100,7 +111,8 @@ func current_boat() -> RigidBody3D:
 func set_in_menu(on: bool) -> void:
 	if on:
 		if state == State.AT_HELM:
-			leave_helm()
+			if not step_ashore():
+				leave_helm()
 		state = State.IN_MENU
 		_set_focus(null)
 		velocity = Vector3.ZERO
@@ -122,6 +134,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if state == State.IN_MENU:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		_mouse_idle = 0.0
 		_yaw -= event.relative.x * MOUSE_SENSITIVITY
 		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENSITIVITY, -1.4, 1.2 if first_person else 0.6)
 	elif event is InputEventMouseButton and event.pressed:
@@ -151,16 +164,19 @@ func _physics_process(delta: float) -> void:
 			_update_focus()
 		State.AT_HELM:
 			_drive()
+			_update_helm_prompt()
 	if state != State.AT_HELM and Input.is_action_pressed(&"bail"):
 		_bail(delta)
 
 
 func _process(delta: float) -> void:
+	_mouse_idle += delta
 	if state == State.AT_HELM and is_instance_valid(vessel):
 		# Follow the seat every rendered frame so the camera does not judder.
 		var seat: Transform3D = vessel.call(&"helm_transform")
 		global_position = seat.origin
 		_body_yaw = vessel.global_rotation.y
+		_follow_boat_with_camera(delta)
 	_pivot.global_rotation = Vector3(_pitch, _yaw, 0.0)
 	_body.global_rotation = Vector3(0, _body_yaw, 0)
 	_animate(delta)
@@ -170,7 +186,7 @@ func _process(delta: float) -> void:
 func take_helm(v: RigidBody3D) -> void:
 	_clear_payload()
 	vessel = v
-	riding = null
+	_set_riding(null)
 	state = State.AT_HELM
 	_collider.disabled = true
 	velocity = Vector3.ZERO
@@ -182,6 +198,51 @@ func take_helm(v: RigidBody3D) -> void:
 	EventBus.notify.emit("R starts the engine. W and S set the throttle, A and D steer, X cuts the throttle. E gets up from the seat.")
 
 
+## At the helm beside a jetty and nearly stopped: tie up and step onto the
+## jetty. Returns false (and does nothing) if there is nowhere to step to.
+func step_ashore() -> bool:
+	if not is_instance_valid(vessel):
+		return false
+	var boat := vessel
+	if boat.linear_velocity.length() > 1.5:
+		return false
+	var point: Node3D = boat.call(&"nearest_landing", 7.0)
+	if point == null:
+		return false
+	leave_helm()
+	boat.call(&"moor_alongside", point.get_parent())
+	_clear_payload()
+	_set_riding(null)
+	global_position = point.global_position + Vector3.UP * 0.1
+	velocity = Vector3.ZERO
+	var to_boat := boat.global_position - global_position
+	_yaw = atan2(-to_boat.x, -to_boat.z) + PI
+	_body_yaw = _yaw
+	return true
+
+
+## Swing the camera round behind the boat when the mouse has been left alone
+## and the boat is moving, so steering does not leave you looking sideways.
+func _follow_boat_with_camera(delta: float) -> void:
+	if _mouse_idle < CAMERA_FOLLOW_DELAY or first_person:
+		return
+	var speed: float = absf(vessel.get(&"speed_ms"))
+	if speed < 1.0:
+		return
+	var rate := clampf(speed / 6.0, 0.2, 1.0) * 1.6
+	_yaw = lerp_angle(_yaw, vessel.global_rotation.y, 1.0 - exp(-rate * delta))
+
+
+func _update_helm_prompt() -> void:
+	var text := "E: Stand up"
+	if is_instance_valid(vessel) and vessel.linear_velocity.length() <= 1.5 \
+			and vessel.call(&"nearest_landing", 7.0) != null:
+		text = "E: Tie up and step ashore"
+	if text != _helm_prompt:
+		_helm_prompt = text
+		EventBus.interaction_prompt_changed.emit(text)
+
+
 ## Stand up from the helm, on the boat beside the seat.
 func leave_helm() -> void:
 	if not is_instance_valid(vessel):
@@ -189,14 +250,15 @@ func leave_helm() -> void:
 		_collider.disabled = false
 		return
 	var boat := vessel
+	_helm_prompt = ""
+	EventBus.interaction_prompt_changed.emit("")
 	boat.call(&"set_helm_occupant", null)
-	_arm.remove_excluded_object(boat.get_rid())
 	EventBus.player_disembarked.emit(boat)
 	state = State.ON_FOOT
 	var seat: Transform3D = boat.call(&"helm_transform")
 	global_position = seat.origin + Vector3.UP * 0.35
 	velocity = _point_velocity(boat, global_position)
-	riding = boat
+	_set_riding(boat)
 	_collider.disabled = false
 	vessel = null
 	_update_camera_rig()
@@ -226,9 +288,15 @@ func _walk(delta: float) -> void:
 			var spin: float = riding.angular_velocity.y * delta
 			_yaw += spin
 			_body_yaw += spin
-		if Input.is_action_just_pressed(&"jump"):
-			velocity.y += JUMP_VELOCITY
-	else:
+	if Input.is_action_just_pressed(&"jump"):
+		_jump_buffer = JUMP_BUFFER
+	_jump_buffer -= delta
+	if (on_floor or _air_time < COYOTE_TIME) and _jump_buffer > 0.0:
+		velocity.y = _ground_vel.y + JUMP_VELOCITY
+		_jump_buffer = 0.0
+		_air_time = COYOTE_TIME  # no second jump from the same grace period
+		on_floor = false
+	if not on_floor:
 		velocity.y -= _gravity * delta
 		velocity += dir * AIR_ACCEL * delta
 
@@ -279,7 +347,7 @@ func rescue() -> void:
 	velocity = Vector3.ZERO
 	state = State.ON_FOOT
 	swim_time = 0.0
-	riding = null
+	_set_riding(null)
 	EventBus.notify.emit("A passing fisherman pulls you out and drops you back at your dock.")
 
 
@@ -287,7 +355,7 @@ func _check_water() -> void:
 	var surface := Waves.height_at(global_position.x, global_position.z)
 	if global_position.y < surface - SWIM_DEPTH:
 		_clear_payload()
-		riding = null
+		_set_riding(null)
 		state = State.SWIMMING
 		swim_time = 0.0
 		EventBus.notify.emit("Splash! Swim with WASD. Space climbs out at a jetty or boat side.")
@@ -324,7 +392,18 @@ func _find_floor_body() -> void:
 		found = hit["collider"]
 	if found != riding:
 		_clear_payload()
-		riding = found
+		_set_riding(found)
+
+
+## The boat under our feet. The camera may pass through it, but not others.
+func _set_riding(b: RigidBody3D) -> void:
+	if b == riding:
+		return
+	if is_instance_valid(riding) and riding != vessel:
+		_arm.remove_excluded_object(riding.get_rid())
+	riding = b
+	if is_instance_valid(b):
+		_arm.add_excluded_object(b.get_rid())
 
 
 ## Our weight on the boat, where we stand.
@@ -384,11 +463,18 @@ func _update_camera_rig() -> void:
 
 
 func _update_focus() -> void:
+	# Nearest wins, but something in front of you counts as much closer than
+	# something behind, so the prompt follows where you look.
 	var best: Interactable = null
 	var best_d := INF
+	var look := facing()
 	for area in _reach.get_overlapping_areas():
 		if area is Interactable and area.enabled:
-			var d := global_position.distance_squared_to(area.global_position)
+			var to := area.global_position - global_position
+			to.y = 0.0
+			var d := to.length()
+			if d > 0.05:
+				d -= look.dot(to / d) * 1.2
 			if d < best_d:
 				best_d = d
 				best = area

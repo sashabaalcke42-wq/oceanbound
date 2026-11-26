@@ -98,7 +98,7 @@ func _add_town_signpost() -> void:
 	var tip := BuildKit.box(post, null, Vector3.ZERO, Vector3(0.08, 0.25, 0.25), Color(0.9, 0.85, 0.7))
 	tip.global_transform = Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, PI / 4),
 			post.global_position + Vector3(0, 1.9, 0) + Basis(Vector3.UP, yaw) * Vector3(0, 0, -1.3))
-	BuildKit.sign_text(post, "Harbour Town  %d m\nshops · fish market · jobs" % dist, Vector3(0, 2.6, 0), 28)
+	BuildKit.sign_text(post, "Harbour Town  %d m\nshops · fish market · jobs" % dist, Vector3(0, 2.4, 0), 22)
 
 
 ## Open the menu for a place in town (a shop, the market, the job board).

@@ -131,9 +131,29 @@ func _drive_back() -> void:
 
 
 func _leave_at_dock() -> void:
-	player.call(&"leave_helm")
+	_check(player.call(&"step_ashore"), "E at the helm beside the dock steps ashore")
 	_check(player.get(&"state") == 0, "steps off at the dock")
+	_check(player.get(&"riding") == null and player.global_position.y > 1.0, "standing on the dock, not in the boat")
+	await _frames(240)
+	var boat: RigidBody3D = main.get(&"player_boat")
+	var xf: Transform3D = boat.get(&"mooring_transform")
+	_check(boat.get(&"moored"), "boat is tied up")
+	_check(Vector2(xf.origin.x - boat.global_position.x, xf.origin.z - boat.global_position.z).length() < 1.0,
+			"boat lies alongside where it was tied")
+	_check(player.get(&"state") == 0 and player.global_position.y > 1.0, "still on the dock after the boat settles")
+	# One press from the dock takes you aboard and to the helm.
+	var board: Interactable = boat.get_node("BoardFromShore")
+	_check(board.enabled, "boarding from the dock is offered")
+	board.interact(player)
+	_check(player.get(&"state") == 1, "boarded from the dock straight to the helm")
+	await _frames(10)
+	_check(player.call(&"step_ashore"), "and back ashore")
 	_wait = 30
+
+
+func _frames(n: int) -> void:
+	for i in n:
+		await get_tree().physics_frame
 
 
 func _remove_and_relaunch() -> void:
@@ -204,7 +224,9 @@ func _walk_into_sea() -> void:
 
 func _swimming() -> void:
 	_check(player.get(&"state") == 3, "falling in the sea means swimming")
-	_check(player.global_position.y > -2.0, "a swimmer floats")
+	var surface := Waves.height_at(player.global_position.x, player.global_position.z)
+	# Floats head-up, chest about 1.4 m under the moving surface.
+	_check(player.global_position.y > surface - 1.8, "a swimmer floats")
 	player.set(&"swim_time", 1000.0)
 	_wait = 5
 
