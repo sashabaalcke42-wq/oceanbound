@@ -89,7 +89,22 @@ var _payloads := {}  # key -> [mass, local position]
 var _helm_occupant: Node3D
 var _water_shift := Vector3.ZERO
 var _water_payload := [0.0, Vector3.ZERO]
-var _head_wet_time := 0.0
+## How much water has got into the engine, 0 to 1. It climbs while the
+## powerhead is under water (fast when running, since the engine sucks it
+## in), costs power and makes it misfire, and at 1 the engine stalls,
+## hydrolocked. Above water it slowly clears; a locked engine has to be
+## cranked by hand (R at the helm) to pump the water out of the cylinders.
+var engine_flood := 0.0
+var hydrolocked := false
+var _head_wet := false
+var _misfire := 0.0
+var _flood_rng := RandomNumberGenerator.new()
+const FLOOD_RATE_RUNNING := 0.4   # per second under water, engine running
+const FLOOD_RATE_OFF := 0.08      # per second under water, engine off
+const CLEAR_RATE_RUNNING := 0.06  # per second above water, running it dry
+const CLEAR_RATE_OFF := 0.02
+const CRANK_CLEARS := 0.15        # each pull of the starter on a locked engine
+const UNLOCK_BELOW := 0.45
 
 
 func setup(p_design: VesselDesign, p_stats: Dictionary) -> void:
@@ -146,15 +161,40 @@ func set_engine_running(on: bool) -> void:
 	if on and fuel_l <= 0.0:
 		EventBus.notify.emit("Out of fuel.")
 		return
-	if on and _head_wet_time > 0.0:
+	if on and not engine_running and _head_wet:
 		EventBus.notify.emit("The engine is under water. Bail the boat out first.")
 		return
+	if on and not engine_running and hydrolocked:
+		_crank_clear()
+		return
 	if on == engine_running:
+		return
+	# A wet engine may not catch first time.
+	if on and engine_flood > 0.15 and _flood_rng.randf() < engine_flood:
+		EventBus.notify.emit("It turns over, coughs and won't catch. Engine %d%% flooded, try again." % roundi(engine_flood * 100.0))
 		return
 	engine_running = on
 	if not on:
 		throttle = 0.0
 	engine_state_changed.emit(on)
+
+
+## A pull on a hydrolocked engine: water squirts out of the plug holes.
+func _crank_clear() -> void:
+	engine_flood = maxf(engine_flood - CRANK_CLEARS, 0.0)
+	if engine_flood < UNLOCK_BELOW:
+		hydrolocked = false
+		EventBus.notify.emit("Water sprays out and the engine turns over freely. Engine %d%% flooded. Press R to start." % roundi(engine_flood * 100.0))
+	else:
+		EventBus.notify.emit("You crank it over and water spurts out. Engine %d%% flooded, keep cranking (R)." % roundi(engine_flood * 100.0))
+
+
+## How much of its power the engine makes, with water in it and the odd
+## misfire.
+func engine_power() -> float:
+	if not engine_running:
+		return 0.0
+	return (1.0 - 0.65 * engine_flood) * (0.15 if _misfire > 0.0 else 1.0)
 
 
 ## Extra weight on board, such as the player or cargo.
@@ -312,6 +352,7 @@ func _physics_process(delta: float) -> void:
 	apply_torque(xf.basis * damp * wet)
 
 	_apply_wind(xf)
+	_update_flood(_powerhead_under(xf), delta)
 	_apply_thrust(xf, delta)
 	_update_water(xf, delta)
 	_apply_mooring(delta)
@@ -335,6 +376,8 @@ func _update_controls(delta: float) -> void:
 	var target := 0.0
 	if engine_running:
 		target = lerpf(IDLE_RPM, MAX_RPM, absf(throttle)) * lerpf(1.25, 1.0, prop_grip)
+		# Water in the engine drags the revs down, and a misfire stumbles them.
+		target *= lerpf(1.0, 0.7, engine_flood) * (0.55 if _misfire > 0.0 else 1.0)
 	rpm = lerpf(rpm, minf(target, MAX_RPM * 1.15), 1.0 - exp(-(3.0 if target > rpm else 1.5) * delta))
 
 
@@ -372,6 +415,7 @@ func _apply_thrust(xf: Transform3D, delta: float) -> void:
 		grip_sum += grip
 		var dir: Vector3 = Basis(Vector3.UP, steer * (e["steer"] as float)) * (e["forward"] as Vector3)
 		var power: float = throttle if throttle >= 0.0 else throttle * profile["reverse_thrust_factor"]
+		power *= engine_power()
 		# A propeller pushes less the faster the water comes at it.
 		var inflow := (xf.basis.inverse() * linear_velocity).dot(e["forward"] as Vector3) * signf(power)
 		var pitch: float = e.get("pitch_speed", 14.0)
@@ -383,21 +427,42 @@ func _apply_thrust(xf: Transform3D, delta: float) -> void:
 		var local_at: Vector3 = e["pos"]
 		local_at.y = lerpf(local_at.y, center_of_mass.y, profile["thrust_height_assist"])
 		apply_force(xf.basis * dir * (e["thrust"] as float) * power * grip * load, xf * local_at - global_position)
-		# A powerhead under water drowns the engine.
-		var head: Vector3 = xf * (e.get("head", e["pos"]) as Vector3)
-		if head.y < Waves.height_at(head.x, head.z) - 0.05:
-			_head_wet_time += delta
-		else:
-			_head_wet_time = 0.0
 	prop_grip = grip_sum / maxf(stats["engines"].size(), 1)
-	if _head_wet_time > 0.6:
-		set_engine_running(false)
-		EventBus.notify.emit("The engine goes under and dies.")
-		return
 	if fuel_l <= 0.0:
 		set_engine_running(false)
 		fuel_empty.emit()
 		EventBus.notify.emit("The engine coughs and dies. Out of fuel.")
+
+
+## Is any engine's powerhead (its top) under the water?
+func _powerhead_under(xf: Transform3D) -> bool:
+	for e: Dictionary in stats["engines"]:
+		var head: Vector3 = xf * (e.get("head", e["pos"]) as Vector3)
+		if head.y < Waves.height_at(head.x, head.z) - 0.05:
+			return true
+	return false
+
+
+func _update_flood(wet: bool, delta: float) -> void:
+	_head_wet = wet
+	_misfire = maxf(_misfire - delta, 0.0)
+	if stats["engines"].is_empty():
+		return
+	var before := engine_flood
+	if wet:
+		engine_flood = minf(engine_flood + (FLOOD_RATE_RUNNING if engine_running else FLOOD_RATE_OFF) * delta, 1.0)
+	elif not hydrolocked:
+		engine_flood = maxf(engine_flood - (CLEAR_RATE_RUNNING if engine_running else CLEAR_RATE_OFF) * delta, 0.0)
+	if engine_running:
+		# A wet engine misfires, more often the wetter it is.
+		if engine_flood > 0.2 and _misfire <= 0.0 and _flood_rng.randf() < engine_flood * 2.5 * delta:
+			_misfire = _flood_rng.randf_range(0.12, 0.35)
+		if engine_flood >= 1.0:
+			hydrolocked = true
+			set_engine_running(false)
+			EventBus.notify.emit("The engine chokes on water and seizes: hydrolocked. Get it above water, then crank it clear with R.")
+		elif before < 0.5 and engine_flood >= 0.5:
+			EventBus.notify.emit("The engine is sputtering, it's taking on water!")
 
 
 ## Water over the gunwale comes in; the pump takes it out; it gathers in the
