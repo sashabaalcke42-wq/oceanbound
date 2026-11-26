@@ -259,3 +259,32 @@ func _tree_mesh() -> ArrayMesh:
 	st.set_material(crown_mat)
 	st.commit(out)
 	return out
+
+
+## A top-down chart of the whole world, `size` pixels square, for the map:
+## water shaded by depth, land by height, with a little hill shading.
+func map_image(size: int) -> Image:
+	var img := Image.create(size, size, false, Image.FORMAT_RGB8)
+	var step := world_size / float(size)
+	for py in size:
+		var z := _origin + (py + 0.5) * step
+		for px in size:
+			var x := _origin + (px + 0.5) * step
+			var h := height_at(x, z)
+			var c: Color
+			if h < 0.0:
+				c = Color(0.55, 0.8, 0.85).lerp(Color(0.12, 0.3, 0.5), clampf(-h / 12.0, 0.0, 1.0))
+			elif h < 2.5:
+				c = SAND
+			else:
+				c = GRASS.lerp(DRY_GRASS, 0.3).lerp(ROCK, smoothstep(30.0, 65.0, h))
+				# Light from the north-west.
+				var shade := (height_at(x - step * 2.0, z - step * 2.0) - height_at(x + step * 2.0, z + step * 2.0)) / (step * 4.0)
+				c = c.darkened(clampf(shade * 0.25, 0.0, 0.2)) if shade > 0.0 else c.lightened(clampf(-shade * 0.15, 0.0, 0.12))
+			img.set_pixel(px, py, c)
+	return img
+
+
+## Map pixel coordinates (0..1 across the world) of a world position.
+func map_uv(p: Vector3) -> Vector2:
+	return Vector2((p.x - _origin) / world_size, (p.z - _origin) / world_size)

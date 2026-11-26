@@ -42,7 +42,7 @@ const DEFAULT_PROFILE := {
 	"roll_pitch_damping": 1.2,
 	"reverse_thrust_factor": 0.4,
 	"thrust_height_assist": 0.75,
-	"throttle_rate": 0.7,
+	"throttle_rate": 1.1,
 	"steer_rate": 3.0,
 	## Air drag on the part above the water (Cd times area fraction).
 	"windage": 0.9,
@@ -71,6 +71,7 @@ var rpm := 0.0
 var water_l := 0.0
 ## Where the boat is tied up, if it is.
 var moored := false
+var _board_area: Interactable
 var mooring_transform := Transform3D()
 
 ## Set every frame by whoever is at the helm (player or AI pilot).
@@ -170,11 +171,52 @@ func try_moor() -> bool:
 		return false
 	if linear_velocity.length() > 1.5:
 		return false
-	for n in get_tree().get_nodes_in_group(&"disembark_points"):
-		if (n as Node3D).global_position.distance_to(global_position) < 6.0:
-			moor_here()
-			return true
-	return false
+	var point := nearest_landing(6.0)
+	if point == null:
+		return false
+	moor_alongside(point.get_parent() as Node3D)
+	return true
+
+
+## The nearest place to step ashore (a jetty or dock's disembark point)
+## within `within` metres, or null.
+func nearest_landing(within: float) -> Node3D:
+	var best: Node3D = null
+	var best_d := within
+	for n: Node3D in get_tree().get_nodes_in_group(&"disembark_points"):
+		var d := Vector2(n.global_position.x - global_position.x, n.global_position.z - global_position.z).length()
+		if d < best_d:
+			best_d = d
+			best = n
+	return best
+
+
+## Put lines out to a jetty: the boat is drawn in parallel to it, a little
+## off its side, on whichever side it already lies, facing whichever way along
+## it is nearer to its current heading.
+func moor_alongside(jetty: Node3D) -> void:
+	if jetty == null:
+		moor_here()
+		return
+	var inv := jetty.global_transform.affine_inverse()
+	var local := inv * global_position
+	var side := signf(local.x) if absf(local.x) > 0.01 else 1.0
+	var deck_half := 1.2  # jetties and docks are 2.4 m wide
+	var jetty_len: float = jetty.get(&"length") if jetty.get(&"length") != null else 18.0
+	var target := Vector3(side * (deck_half + stats["beam"] * 0.5 + 0.6), 0.0,
+			clampf(local.z, -jetty_len + 2.0, -3.0))
+	var along := jetty.global_basis.z
+	along.y = 0.0
+	along = along.normalized()
+	var fwd := -global_basis.z
+	if fwd.dot(along) < 0.0:
+		along = -along
+	# The boat's forward (-Z) lies along `along`.
+	var yaw := atan2(-along.x, -along.z)
+	var origin := jetty.global_transform * target
+	origin.y = global_position.y
+	moored = true
+	mooring_transform = Transform3D(Basis(Vector3.UP, yaw), origin)
 
 
 func moor_here() -> void:
@@ -195,6 +237,10 @@ func water_fraction() -> float:
 
 func _physics_process(delta: float) -> void:
 	_update_controls(delta)
+	if _board_area:
+		# Only offered to someone who is not already aboard.
+		var p := get_tree().get_first_node_in_group(&"player")
+		_board_area.enabled = _helm_occupant == null and p != null and p.call(&"current_boat") != self
 	var xf := global_transform
 	var com_world := xf * center_of_mass
 	var area: float = maxf(stats["waterplane_area"], 0.05)
@@ -375,7 +421,7 @@ func _apply_mooring(_delta: float) -> void:
 	var off := mooring_transform.origin - global_position
 	off.y = 0.0
 	var slack: float = profile["mooring_slack"]
-	var stretch := maxf(off.length() - slack, 0.0)
+	var stretch := minf(maxf(off.length() - slack, 0.0), 1.2)
 	var v := linear_velocity
 	v.y = 0.0
 	var f: Vector3 = off.normalized() * stretch * mass * profile["mooring_spring"] * 10.0 - v * mass * profile["mooring_damping"] * 0.5
@@ -422,6 +468,23 @@ func _add_helm_seat() -> void:
 	area.position = stats["helm_position"] + Vector3.UP * 0.6
 	add_child(area)
 	area.interacted.connect(_on_helm_requested)
+	# From a dock or jetty beside the boat, one press takes you aboard and
+	# straight to the helm.
+	var centre := Vector3.ZERO
+	for col: Dictionary in stats["columns"]:
+		centre += col["pos"]
+	centre /= maxf(stats["columns"].size(), 1)
+	_board_area = Interactable.new()
+	_board_area.name = "BoardFromShore"
+	_board_area.prompt = "Step aboard and take the helm"
+	var bshape := CollisionShape3D.new()
+	var bbox := BoxShape3D.new()
+	bbox.size = Vector3(stats["beam"] + 1.5, 3.0, stats["length"] + 1.0)
+	bshape.shape = bbox
+	_board_area.add_child(bshape)
+	_board_area.position = Vector3(centre.x, (stats["helm_position"] as Vector3).y + 0.6, centre.z)
+	add_child(_board_area)
+	_board_area.interacted.connect(_on_helm_requested)
 
 
 func _on_helm_requested(by: Node) -> void:

@@ -50,6 +50,9 @@ func _ready() -> void:
 	EventBus.player_boarded.connect(func(v: Node): _vessel = v)
 	EventBus.player_disembarked.connect(func(_v: Node): _vessel = null)
 	_build_compass()
+	var minimap := preload("res://ui/minimap.gd").new()
+	minimap.name = "Minimap"
+	add_child(minimap)
 
 
 func _process(delta: float) -> void:

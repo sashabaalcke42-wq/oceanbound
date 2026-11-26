@@ -180,23 +180,28 @@ func _build() -> void:
 	_hips.name = "Hips"
 	_hips.position.y = HIP_HEIGHT
 	add_child(_hips)
-	_box(_hips, Vector3(0, 0.02, 0), Vector3(0.34, 0.16, 0.2), trousers)
+	# Pelvis: a rounded block lying across the hips.
+	_capsule(_hips, Vector3(0, 0.0, 0), 0.11, 0.36, trousers, Vector3(1, 0.85, 0.9), Vector3(0, 0, PI / 2))
 
-	# Torso: a tapered jacket, with a collar and a belt.
+	# Torso: a waist that widens into the chest, rounded shoulders across the
+	# top, a collar and a belt. Overlapping rounded pieces so no corners show.
 	_spine = Node3D.new()
 	_spine.name = "Spine"
 	_spine.position.y = 0.08
 	_hips.add_child(_spine)
-	_capsule(_spine, Vector3(0, 0.22, 0), 0.17, 0.5, shirt, Vector3(1.05, 1, 0.68))
-	_box(_spine, Vector3(0, 0.38, 0), Vector3(0.42, 0.12, 0.22), shirt)
-	_box(_spine, Vector3(0, 0.0, 0), Vector3(0.35, 0.05, 0.21), boots)
-	_box(_spine, Vector3(0, 0.2, -0.115), Vector3(0.03, 0.34, 0.01), dark)  # zip
+	_capsule(_spine, Vector3(0, 0.11, 0), 0.155, 0.3, shirt, Vector3(1.06, 1, 0.7))   # waist
+	_capsule(_spine, Vector3(0, 0.24, 0), 0.16, 0.46, shirt, Vector3(1.1, 1, 0.7))  # chest
+	_capsule(_spine, Vector3(0, SHOULDER_Y - 0.11, 0.0), 0.068, 0.44, shirt, Vector3(1, 0.85, 1.1), Vector3(0, 0, PI / 2))  # shoulders
+	_cylinder(_spine, Vector3(0, SHOULDER_Y - 0.03, 0), 0.07, 0.06, shirt)  # collar
+	_cylinder(_spine, Vector3(0, 0.0, 0), 0.155, 0.05, boots, Vector3(1.0, 1, 0.72))  # belt
+	_box(_spine, Vector3(0, 0.03, -0.113), Vector3(0.05, 0.035, 0.012), _mat(Color(0.7, 0.65, 0.5), 0.3))  # buckle
+	_box(_spine, Vector3(0, 0.24, -0.122), Vector3(0.02, 0.36, 0.01), dark)  # zip
 
 	_neck = Node3D.new()
 	_neck.name = "Neck"
 	_neck.position.y = SHOULDER_Y - 0.02
 	_spine.add_child(_neck)
-	_capsule(_neck, Vector3(0, 0.06, 0), 0.055, 0.14, skin)
+	_capsule(_neck, Vector3(0, 0.06, 0), 0.058, 0.14, skin)
 	var head := Node3D.new()
 	head.name = "Head"
 	head.position.y = 0.2
@@ -204,10 +209,11 @@ func _build() -> void:
 	_head_mesh = head
 	_sphere(head, Vector3.ZERO, 0.115, skin, Vector3(0.92, 1.08, 1.0))
 	_sphere(head, Vector3(0, 0.045, 0.015), 0.12, hair, Vector3(0.96, 0.72, 1.0))  # hair
-	_box(head, Vector3(0, -0.005, -0.112), Vector3(0.03, 0.05, 0.03), skin)  # nose
-	for ex in [-0.042, 0.042]:
-		_box(head, Vector3(ex, 0.02, -0.103), Vector3(0.025, 0.02, 0.01), dark)  # eyes
-		_sphere(head, Vector3(ex * 2.6, 0.0, 0.0), 0.025, skin)  # ears
+	_sphere(head, Vector3(0, -0.01, -0.108), 0.02, skin, Vector3(0.8, 1.2, 1.0))  # nose
+	for ex in [-0.04, 0.04]:
+		_sphere(head, Vector3(ex, 0.02, -0.1), 0.014, dark)  # eyes
+		_box(head, Vector3(ex, 0.045, -0.104), Vector3(0.035, 0.008, 0.01), hair)  # brows
+		_sphere(head, Vector3(ex * 2.55, 0.0, 0.005), 0.02, skin, Vector3(0.45, 1.0, 0.7))  # ears
 
 	for i in 2:
 		var side := -1.0 if i == 0 else 1.0
@@ -215,27 +221,34 @@ func _build() -> void:
 		var thigh := Node3D.new()
 		thigh.position = Vector3(side * 0.1, -0.02, 0)
 		_hips.add_child(thigh)
-		_capsule(thigh, Vector3(0, -THIGH * 0.5, 0), 0.075, THIGH + 0.1, trousers)
+		_capsule(thigh, Vector3(0, -THIGH * 0.5, 0), 0.08, THIGH + 0.12, trousers, Vector3(1, 1, 1.05))
 		var knee := Node3D.new()
 		knee.position.y = -THIGH
 		thigh.add_child(knee)
-		_capsule(knee, Vector3(0, -SHIN * 0.5, 0), 0.06, SHIN + 0.06, trousers)
+		_sphere(knee, Vector3.ZERO, 0.068, trousers)
+		_capsule(knee, Vector3(0, -SHIN * 0.5, 0), 0.062, SHIN + 0.06, trousers)
 		var foot := Node3D.new()
 		foot.position.y = -SHIN
 		knee.add_child(foot)
-		_box(foot, Vector3(0, -0.04, -0.05), Vector3(0.11, 0.1, 0.27), boots)
+		# A boot: rounded toe and heel, a flat sole.
+		_capsule(foot, Vector3(0, -0.035, -0.045), 0.055, 0.27, boots, Vector3(1.0, 0.85, 1.0), Vector3(PI / 2, 0, 0))
+		_box(foot, Vector3(0, -0.075, -0.045), Vector3(0.1, 0.02, 0.25), dark)
 		_legs.append({"thigh": thigh, "knee": knee, "foot": foot})
 
 		# Arms: pivot at the shoulder, then elbow, then hand.
 		var shoulder := Node3D.new()
 		shoulder.position = Vector3(side * 0.22, SHOULDER_Y - 0.1, 0)
 		_spine.add_child(shoulder)
-		_capsule(shoulder, Vector3(0, -UPPER_ARM * 0.5, 0), 0.055, UPPER_ARM + 0.08, shirt)
+		_sphere(shoulder, Vector3(0, -0.02, 0), 0.062, shirt)  # deltoid
+		_capsule(shoulder, Vector3(0, -UPPER_ARM * 0.5, 0), 0.058, UPPER_ARM + 0.08, shirt)
 		var elbow := Node3D.new()
 		elbow.position.y = -UPPER_ARM
 		shoulder.add_child(elbow)
-		_capsule(elbow, Vector3(0, -FOREARM * 0.5, 0), 0.047, FOREARM + 0.04, shirt)
-		_sphere(elbow, Vector3(0, -FOREARM - 0.04, 0), 0.05, skin, Vector3(0.8, 1.1, 0.6))
+		_sphere(elbow, Vector3.ZERO, 0.054, shirt)
+		_capsule(elbow, Vector3(0, -FOREARM * 0.5, 0), 0.05, FOREARM + 0.04, shirt)
+		_cylinder(elbow, Vector3(0, -FOREARM + 0.01, 0), 0.052, 0.04, shirt)  # cuff
+		_sphere(elbow, Vector3(0, -FOREARM - 0.045, 0), 0.048, skin, Vector3(0.75, 1.15, 0.55))  # hand
+		_sphere(elbow, Vector3(0, -FOREARM - 0.03, -0.035), 0.018, skin, Vector3(1, 1.6, 1))  # thumb
 		_arms.append({"shoulder": shoulder, "elbow": elbow})
 	animate(0.016, Pose.GROUND, Vector3.ZERO)
 
@@ -247,14 +260,31 @@ func _mat(color: Color, roughness: float) -> StandardMaterial3D:
 	return m
 
 
-func _capsule(parent: Node3D, pos: Vector3, radius: float, height: float, mat: Material, scl := Vector3.ONE) -> void:
+func _capsule(parent: Node3D, pos: Vector3, radius: float, height: float, mat: Material,
+		scl := Vector3.ONE, rot := Vector3.ZERO) -> void:
 	var m := MeshInstance3D.new()
 	var cap := CapsuleMesh.new()
 	cap.radius = radius
 	cap.height = maxf(height, radius * 2.0)
-	cap.radial_segments = 12
-	cap.rings = 4
+	cap.radial_segments = 16
+	cap.rings = 6
 	m.mesh = cap
+	m.material_override = mat
+	m.position = pos
+	m.rotation = rot
+	m.scale = scl
+	parent.add_child(m)
+
+
+func _cylinder(parent: Node3D, pos: Vector3, radius: float, height: float, mat: Material, scl := Vector3.ONE) -> void:
+	var m := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = radius
+	cyl.bottom_radius = radius
+	cyl.height = height
+	cyl.radial_segments = 16
+	cyl.rings = 1
+	m.mesh = cyl
 	m.material_override = mat
 	m.position = pos
 	m.scale = scl
@@ -266,8 +296,8 @@ func _sphere(parent: Node3D, pos: Vector3, radius: float, mat: Material, scl := 
 	var sph := SphereMesh.new()
 	sph.radius = radius
 	sph.height = radius * 2.0
-	sph.radial_segments = 14
-	sph.rings = 8
+	sph.radial_segments = 16
+	sph.rings = 10
 	m.mesh = sph
 	m.material_override = mat
 	m.position = pos

@@ -17,6 +17,7 @@ const BINDINGS := {
 	"fish": [KEY_F],
 	"view_toggle": [KEY_V],
 	"bail": [KEY_B],
+	"map_toggle": [KEY_M],
 }
 
 
