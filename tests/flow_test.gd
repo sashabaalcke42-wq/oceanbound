@@ -42,7 +42,7 @@ func _ready() -> void:
 		_open_workshop, _undo_redo, _delete_mode, _build_rest, _launch,
 		_board, _drive, _cut_and_leave_far, _standing_in_boat, _drive_back, _leave_at_dock,
 		_open_workshop, _remove_and_relaunch,
-		_walk_into_sea, _swimming, _save_and_load, _pause_menu, _done,
+		_walk_into_sea, _swimming, _save_and_load, _pause_menu, _cheats, _done,
 	]
 
 
@@ -174,6 +174,34 @@ func _pause_menu() -> void:
 	_check(main.get(&"pause_menu") != null and get_tree().paused, "Esc pauses with a menu")
 	(main.get(&"pause_menu") as Node).call(&"resume")
 	_check(not get_tree().paused and main.get(&"pause_menu") == null, "Continue carries on")
+	_wait = 5
+
+
+func _cheats() -> void:
+	var f1 := InputEventAction.new()
+	f1.action = &"cheat_menu"
+	f1.pressed = true
+	main.call(&"_unhandled_input", f1)
+	var menu: Node = main.get(&"cheat_menu")
+	_check(menu != null and get_tree().paused, "F1 opens the cheat menu")
+	var money := Economy.balance
+	menu.call(&"_money", 1000)
+	_check(Economy.balance == money + 1000, "cheat adds money")
+	menu.call(&"give_parts")
+	_check(Inventory.count(&"outboard_15hp_remote") >= 10, "cheat gives parts")
+	var boat: RigidBody3D = main.get(&"player_boat")
+	boat.global_transform = Transform3D(Basis(Vector3.FORWARD, PI), boat.global_position)
+	menu.call(&"right_boat")
+	_check(boat.global_basis.y.y > 0.99, "cheat rights a capsized boat")
+	menu.call(&"boat_home")
+	_check(boat.get(&"moored"), "cheat brings the boat home")
+	menu.call(&"_teleport", &"town_quay")
+	_check(player.global_position.distance_to(Locations.position_of(&"town_quay")) < 3.0, "cheat teleports to town")
+	menu.call(&"toggle_calm")
+	_check(Waves.wind_speed == 0.0, "cheat calms the weather")
+	menu.call(&"toggle_calm")
+	menu.call(&"close")
+	_check(not get_tree().paused and main.get(&"cheat_menu") == null, "closing the cheat menu carries on")
 	_wait = 5
 
 
