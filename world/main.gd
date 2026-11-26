@@ -26,6 +26,7 @@ var town: Node3D
 ## The menu screen open right now, if any.
 var screen: CanvasLayer
 var pause_menu: CanvasLayer
+var cheat_menu: CanvasLayer
 ## Set when quitting on purpose without saving.
 var skip_autosave := false
 
@@ -71,6 +72,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			and workshop == null and player.get(&"state") != 2:
 		get_viewport().set_input_as_handled()
 		open_pause_menu()
+	elif event.is_action_pressed(&"cheat_menu") and pause_menu == null and cheat_menu == null and screen == null \
+			and workshop == null and player.get(&"state") != 2:
+		get_viewport().set_input_as_handled()
+		open_cheat_menu()
+
+
+## Testing cheats (F1).
+func open_cheat_menu() -> void:
+	cheat_menu = preload("res://ui/cheat_menu.gd").new()
+	cheat_menu.set(&"world", self)
+	cheat_menu.connect(&"closed", func(): cheat_menu = null)
+	add_child(cheat_menu)
 
 
 func open_pause_menu() -> void:
