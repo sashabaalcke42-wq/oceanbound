@@ -33,11 +33,15 @@ enum Category { STRUCTURE, PROPULSION, EQUIPMENT, DECORATION }
 ## The water speed at which the propeller stops pushing (its pitch times its
 ## top revs). Thrust falls off towards it, as with a real propeller.
 @export var prop_pitch_speed_ms := 14.0
+## Steered by hand with a tiller handle. The driver sits within reach of it,
+## and a boat takes only one. Otherwise the engine is steered by cable from a
+## helm seat with a wheel, and several can be fitted side by side.
+@export var tiller := false
 
 @export_group("Equipment")
 ## Litres of fuel this block holds.
 @export var fuel_capacity_l := 0.0
-## A helm is where the player sits to drive. A vessel needs one to be driven.
+## A helm seat has a steering wheel. Remote (non-tiller) outboards need one.
 @export var is_helm := false
 @export var seats := 0
 ## A bilge pump: litres per hour it pumps out of the boat. Runs on its own.

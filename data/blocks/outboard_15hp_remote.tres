@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BlockDef" format=3]
+
+[ext_resource type="Script" path="res://vessel/blocks/block_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"outboard_15hp_remote"
+display_name = "15 hp remote outboard"
+description = "The same 15 hp motor without a tiller, steered by cable from a helm seat with a wheel. Fit one, or two side by side for more push."
+category = 1
+size = Vector3i(1, 4, 1)
+anchor = Vector3i(0, 3, 0)
+mass_kg = 40.0
+price = 1650
+default_color = Color(0.92, 0.93, 0.94, 1)
+thrust_n = 2400.0
+prop_pitch_speed_ms = 15.0
+steer_angle_deg = 32.0
+fuel_burn_lph = 5.5

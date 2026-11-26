@@ -37,6 +37,9 @@ var _land := 0.0       # 0..1, how hard we just landed (crouch)
 var _lean := Vector2.ZERO  # forward and sideways body lean
 var _breath := 0.0
 var _blend := {}       # smoothed joint angles
+## World positions for the left and right hands to hold (a tiller, a wheel),
+## or null to let that arm move with the pose.
+var hand_targets: Array = [null, null]
 
 
 func _ready() -> void:
@@ -128,18 +131,21 @@ func animate(delta: float, pose: Pose, local_vel: Vector3, turn_rate := 0.0, ver
 			a["arm_out"] = 0.5 + 0.3 * s
 			_lean.x = lerpf(_lean.x, 0.25 + moving * 0.6, 1.0 - exp(-4.0 * delta))
 		Pose.SIT:
-			a["thigh_l"] = 1.45
-			a["thigh_r"] = 1.35
-			a["knee_l"] = -1.4
-			a["knee_r"] = -1.3
-			a["foot_l"] = 0.0
-			a["foot_r"] = 0.0
-			a["arm_l"] = 0.9
-			a["arm_r"] = 0.7
-			a["elbow_l"] = 0.5
-			a["elbow_r"] = 0.6
+			# Seated low, as in a small boat: knees a little above the hips
+			# and feet flat on the floor in front.
+			a["thigh_l"] = 1.72
+			a["thigh_r"] = 1.62
+			a["knee_l"] = -1.1
+			a["knee_r"] = -1.05
+			a["foot_l"] = -0.6
+			a["foot_r"] = -0.55
+			# A free hand rests on the thigh.
+			a["arm_l"] = 0.45
+			a["arm_r"] = 0.4
+			a["elbow_l"] = 0.95
+			a["elbow_r"] = 1.0
 			a["arm_out"] = 0.15
-			hip_y = 0.4
+			hip_y = 0.31
 			_lean.x = lerpf(_lean.x, 0.05, 1.0 - exp(-6.0 * delta))
 
 	# Smooth every joint so changes of pose blend rather than snap.
@@ -161,6 +167,39 @@ func animate(delta: float, pose: Pose, local_vel: Vector3, turn_rate := 0.0, ver
 		_legs[i]["foot"].rotation = Vector3(_blend["foot" + side], 0, 0)
 		_arms[i]["shoulder"].rotation = Vector3(_blend["arm" + side], 0, sign_x * _blend["arm_out"])
 		_arms[i]["elbow"].rotation = Vector3(_blend["elbow" + side], 0, 0)
+		if i < hand_targets.size() and hand_targets[i] is Vector3:
+			_reach(i, hand_targets[i])
+
+
+## Bend an arm so its hand ends at `target` (world space): a two-bone reach
+## with the elbow pointing out and back, as when holding a handle.
+func _reach(i: int, target: Vector3) -> void:
+	var shoulder: Node3D = _arms[i]["shoulder"]
+	var parent := shoulder.get_parent() as Node3D
+	var d: Vector3 = parent.global_transform.affine_inverse() * target - shoulder.position
+	var upper_len := UPPER_ARM
+	var fore_len := FOREARM + 0.045  # to the middle of the hand
+	var l := clampf(d.length(), absf(upper_len - fore_len) + 0.01, upper_len + fore_len - 0.001)
+	var n := d.normalized()
+	var bend := PI - acos(clampf((upper_len * upper_len + fore_len * fore_len - l * l) / (2.0 * upper_len * fore_len), -1.0, 1.0))
+	var alpha := acos(clampf((upper_len * upper_len + l * l - fore_len * fore_len) / (2.0 * upper_len * l), -1.0, 1.0))
+	var hinge := Vector3.RIGHT - n * n.dot(Vector3.RIGHT)
+	if hinge.length() < 0.01:
+		hinge = Vector3.FORWARD.cross(n)
+	hinge = hinge.normalized()
+	var best := shoulder.basis
+	var best_err := INF
+	for sgn in [1.0, -1.0]:
+		var upper := n.rotated(hinge, sgn * alpha)
+		var y := -upper
+		var b := Basis(hinge, y, hinge.cross(y))
+		var hand := upper * upper_len + b * Vector3(0, -cos(bend), -sin(bend)) * fore_len
+		var err := hand.distance_to(n * l)
+		if err < best_err:
+			best_err = err
+			best = b
+	shoulder.basis = best
+	_arms[i]["elbow"].rotation = Vector3(bend, 0, 0)
 
 
 ## Start a landing crouch, scaled by how fast we hit the ground.

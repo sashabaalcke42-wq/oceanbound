@@ -208,6 +208,22 @@ func _board() -> void:
 
 func _drive() -> void:
 	var boat: RigidBody3D = main.get(&"player_boat")
+	# A tiller boat: the driver's hand is on the tiller, and the motor swings
+	# the way its thrust points as you steer.
+	var grip: Variant = boat.call(&"tiller_grip")
+	_check(grip is Vector3, "the starter boat is steered by tiller")
+	var body: Node3D = player.get_node("Body")
+	var hand_at := INF
+	for arm: Dictionary in body.get(&"_arms"):
+		var hand: Vector3 = (arm["elbow"] as Node3D).global_transform * Vector3(0, -(0.28 + 0.045), 0)
+		hand_at = minf(hand_at, hand.distance_to(grip))
+	_check(hand_at < 0.05, "the driver holds the tiller (hand %.2f m from the grip)" % hand_at)
+	boat.set(&"steer", 1.0)
+	boat.call(&"_process", 0.0)
+	var motor := boat.get_node("Outboard0") as Node3D
+	_check(absf(motor.rotation.y - deg_to_rad(32.0)) < 0.01, "the motor swings as you steer")
+	boat.set(&"steer", 0.0)
+	boat.call(&"_process", 0.0)
 	boat.call(&"set_engine_running", true)
 	boat.set(&"throttle", 1.0)
 	# Start clear of the dock (leaving the berth needs steering, which this

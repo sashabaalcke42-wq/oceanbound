@@ -69,6 +69,8 @@ func _refresh_stats() -> void:
 	if not est.is_empty():
 		lines.append("Draft %.0f cm, freeboard %.0f cm" % [est["draft"] * 100.0, est["freeboard"] * 100.0])
 		lines.append("Top speed about %.0f knots" % est["top_speed_kn"])
+		var lean: float = est["lean_deg"]
+		lines.append("Balance: level" if absf(lean) < 0.5 else "Balance: leans %.1f° %s" % [absf(lean), "right" if lean > 0.0 else "left"])
 	if not st.is_empty():
 		lines.append("Fuel %.0f L, seats %d" % [st["fuel_capacity"], st["seats"]])
 	for p: String in a["problems"]:

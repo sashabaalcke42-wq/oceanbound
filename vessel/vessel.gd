@@ -110,6 +110,26 @@ func setup(p_design: VesselDesign, p_stats: Dictionary) -> void:
 	add_child(fx)
 
 
+func _process(_delta: float) -> void:
+	# Swing each outboard to where its thrust points.
+	var engines: Array = stats.get("engines", [])
+	for i in engines.size():
+		var pivot := get_node_or_null(NodePath("Outboard%d" % i)) as Node3D
+		if pivot:
+			pivot.basis = Basis(Vector3.UP, steer * (engines[i]["steer"] as float))
+
+
+## Where the driver's hand goes on a tiller outboard, in world space, or null
+## if the boat is not steered by tiller.
+func tiller_grip() -> Variant:
+	for child in get_children():
+		if child.name.begins_with("Outboard"):
+			var m := child.get_child(0).get_node_or_null(^"TillerGrip") as Node3D
+			if m:
+				return m.global_position
+	return null
+
+
 func has_helm() -> bool:
 	return stats.get("has_helm", false)
 
@@ -459,7 +479,7 @@ func _add_helm_seat() -> void:
 		return
 	var area := Interactable.new()
 	area.name = "BoardArea"
-	area.prompt = "Take the helm"
+	area.prompt = "Take the tiller" if stats.get("tiller_count", 0) > 0 else "Take the helm"
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = Vector3(1.4, 1.8, 1.4)

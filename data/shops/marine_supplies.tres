@@ -7,4 +7,4 @@ script = ExtResource("1")
 id = &"marine_supplies"
 display_name = "Marine Supplies"
 greeting = "Hull plate, motors, the lot. Mind the dog."
-stock = Array[StringName]([&"hull_aluminium", &"hull_aluminium_wedge", &"bench_seat", &"seat_helm", &"fuel_tank_12l", &"bilge_pump", &"outboard_15hp"])
+stock = Array[StringName]([&"hull_aluminium", &"hull_aluminium_wedge", &"bench_seat", &"seat_helm", &"fuel_tank_12l", &"bilge_pump", &"outboard_15hp", &"outboard_15hp_remote"])

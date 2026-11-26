@@ -122,7 +122,9 @@ func _physics_process(_delta: float) -> void:
 				moved.y = 0.0
 				print("15 s adrift in 16 kn of wind: moved %.1f m, %.0f deg off the wind" % [
 					moved.length(), rad_to_deg(moved.angle_to(Waves.wind))])
-				_check(moved.length() > 2.0, "wind pushes a drifting boat")
+				# How far depends on which way the boat lies to the wind after
+				# the turns above, so only check that it went downwind.
+				_check(moved.dot(Waves.wind.normalized()) > 1.0, "wind pushes a drifting boat")
 				_check(moved.angle_to(Waves.wind) < deg_to_rad(60.0), "and pushes it downwind")
 				boat.call(&"moor_here")
 				_drift_from = boat.global_position
