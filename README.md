@@ -100,9 +100,11 @@ Lighthouse Point, Northern Cove and Oyster Farm are where deliveries go.
   top right, and a gold beacon marks where to go. Deliveries have a deadline;
   stop at the jetty (or step off) to pick up and drop off. Fish orders want a
   number of one fish brought to Harbour Town's quay.
-- **Fishing.** Press **F** facing the water from a dock, the shore or a
-  stopped boat. When the float starts bobbing and it says something's biting,
-  press **F** again quickly. Bait halves the wait. Deeper water holds bigger,
+- **Fishing.** Face the water from a dock, the shore or a stopped boat; when
+  "F: Fish here" appears (with the depth and which fish live there), press
+  **F** to cast. A rod, line and red float appear. When the float is dragged
+  under with a splash and **FISH ON!** flashes, press **F** within about two
+  seconds. Bait halves the wait. Deeper water holds bigger,
   pricier fish; tuna only live far out.
 - **Money.** You start with $250. Fish prices change through the day and drop
   if you sell a lot of one kind at once. Fuel is $2 a litre at any pump.
