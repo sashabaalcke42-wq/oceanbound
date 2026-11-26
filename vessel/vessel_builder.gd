@@ -446,12 +446,122 @@ static func _build_mesh(design: VesselDesign, occupancy: Dictionary) -> ArrayMes
 		st.set_color(entry["color"])
 		if def.shape == BlockDef.Shape.WEDGE:
 			_add_wedge(st, Vector3(entry["cell"]) * CELL, Orientations.basis(entry["rot"]))
+		elif _add_detailed(st, entry):
+			pass
 		elif def.size == Vector3i.ONE:
 			_add_cube(st, entry["cell"], design, occupancy)
 		else:
 			var aabb := _block_aabb(entry)
 			_add_box(st, aabb.get_center(), aabb.size)
 	return st.commit()
+
+
+# --- Detailed pieces ----------------------------------------------------------
+# Equipment is modelled in the block's own frame, so the shape shows which way
+# it faces: -Z is the front of the boat, +Y is up, and (0, 0, 0) is the centre
+# of the block's origin cell (its other cells lie along +X, +Y and +Z).
+
+const _DARK := Color(0.12, 0.12, 0.13)
+const _METAL := Color(0.55, 0.57, 0.6)
+const _BRONZE := Color(0.85, 0.62, 0.25)
+const _WHITE := Color(0.95, 0.95, 0.92)
+
+
+## Adds a recognisable model for equipment blocks. Returns false for blocks
+## that are drawn as plain cubes or boxes.
+static func _add_detailed(st: SurfaceTool, entry: Dictionary) -> bool:
+	var xf := Transform3D(Orientations.basis(entry["rot"]), Vector3(entry["cell"]) * CELL)
+	var col: Color = entry["color"]
+	var C := CELL
+	match String(entry["id"]):
+		"outboard_15hp":
+			# Four cells tall: propeller at the bottom (y 0), powerhead on top
+			# (y 3). Thrust pushes the boat towards -Z, so the propeller sits at
+			# the back (+Z) and the tiller handle reaches forward into the boat.
+			_obox(st, xf, Vector3(0, 3 * C + 0.01, 0.03), Vector3(0.2, 0.22, 0.26), col)  # cowling
+			_obox(st, xf, Vector3(0, 3 * C + 0.13, 0.03), Vector3(0.17, 0.03, 0.22), col.lightened(0.25))  # cap
+			_arrow(st, xf, Vector3(0, 3 * C + 0.147, 0.02), 0.14, _WHITE)  # points forward
+			_obox(st, xf, Vector3(0, 3 * C - 0.04, -0.15), Vector3(0.04, 0.04, 0.16), _DARK)  # tiller
+			_obox(st, xf, Vector3(0, 3 * C - 0.04, -0.24), Vector3(0.05, 0.05, 0.05), _DARK)  # grip
+			_obox(st, xf, Vector3(0, 2 * C - 0.04, -0.06), Vector3(0.12, 0.1, 0.05), _METAL)  # transom clamp
+			_obox(st, xf, Vector3(0, 1.5 * C, 0.03), Vector3(0.06, 0.62, 0.09), _DARK)  # shaft
+			_obox(st, xf, Vector3(0, 0.08, 0.03), Vector3(0.16, 0.015, 0.2), _DARK)  # cavitation plate
+			_obox(st, xf, Vector3(0, -0.02, 0.03), Vector3(0.075, 0.075, 0.22), _DARK)  # gearcase
+			_obox(st, xf, Vector3(0, -0.07, 0.06), Vector3(0.02, 0.06, 0.1), _DARK)  # skeg
+			_obox(st, xf, Vector3(0, -0.02, 0.155), Vector3(0.04, 0.04, 0.04), _BRONZE)  # hub
+			for i in 3:
+				var blade := Basis(Vector3.BACK, i * TAU / 3.0 + 0.3)
+				_obox(st, xf, Vector3(0, -0.02, 0.16) + blade * Vector3(0, 0.07, 0), Vector3(0.05, 0.12, 0.012),
+						_BRONZE, blade * Basis(Vector3.UP, 0.35))
+			return true
+		"seat_helm":
+			# Two cells wide (along +X): a seat facing forward with a backrest
+			# behind and a wheel on a console in front.
+			var mid := Vector3(0.5 * C, 0, 0)
+			_obox(st, xf, mid + Vector3(0, -0.07, 0.02), Vector3(0.44, 0.1, 0.2), col)  # cushion
+			_obox(st, xf, mid + Vector3(0, 0.06, 0.11), Vector3(0.44, 0.22, 0.04), col)  # backrest
+			_obox(st, xf, mid + Vector3(0, -0.11, 0.02), Vector3(0.4, 0.03, 0.18), _DARK)  # base
+			_obox(st, xf, mid + Vector3(0, 0.03, -0.12), Vector3(0.14, 0.26, 0.04), _METAL)  # console
+			_ring(st, xf, mid + Vector3(0, 0.17, -0.105), 0.075, _DARK)  # wheel
+			_obox(st, xf, mid + Vector3(0, 0.17, -0.105), Vector3(0.025, 0.025, 0.03), _METAL)  # wheel hub
+			return true
+		"bench_seat":
+			_obox(st, xf, Vector3(0, -0.02, 0), Vector3(0.25, 0.05, 0.2), col)  # plank
+			for lx in [-0.09, 0.09]:
+				_obox(st, xf, Vector3(lx, -0.09, 0), Vector3(0.03, 0.1, 0.16), col.darkened(0.3))
+			return true
+		"fuel_tank_12l":
+			var mid := Vector3(0.5 * C, 0, 0)
+			_obox(st, xf, mid + Vector3(0, -0.01, 0), Vector3(0.46, 0.21, 0.22), col)  # tank
+			_obox(st, xf, mid + Vector3(0, 0.1, 0), Vector3(0.4, 0.02, 0.16), col.darkened(0.15))  # top
+			_obox(st, xf, mid + Vector3(0.15, 0.12, 0.04), Vector3(0.05, 0.04, 0.05), _DARK)  # filler cap
+			_obox(st, xf, mid + Vector3(-0.17, 0.12, -0.02), Vector3(0.03, 0.03, 0.03), _METAL)  # fuel line
+			_obox(st, xf, mid + Vector3(-0.02, 0.13, 0), Vector3(0.18, 0.025, 0.03), _DARK)  # handle
+			return true
+		"bilge_pump":
+			_obox(st, xf, Vector3(0, -0.06, 0), Vector3(0.12, 0.12, 0.12), col)  # pump body
+			_obox(st, xf, Vector3(0, -0.11, 0), Vector3(0.15, 0.02, 0.15), _DARK)  # strainer
+			_obox(st, xf, Vector3(0, 0.03, 0), Vector3(0.03, 0.08, 0.03), _DARK)  # outlet hose
+			return true
+	return false
+
+
+## A box in a block's frame, optionally turned by `turn` about its own centre.
+static func _obox(st: SurfaceTool, xf: Transform3D, center: Vector3, size: Vector3, color: Color,
+		turn := Basis.IDENTITY) -> void:
+	st.set_color(color)
+	var h := size * 0.5
+	for n: Vector3i in _FACE_DIRS:
+		var nf := Vector3(n)
+		var u := Vector3(nf.y, nf.z, nf.x).abs()
+		var v := nf.cross(u)
+		var c := nf * h
+		var hu := u * h
+		var hv := v * h
+		var pts := [c - hu - hv, c + hu - hv, c + hu + hv, c - hu + hv]
+		for i in 4:
+			pts[i] = xf * (center + turn * (pts[i] as Vector3))
+		_add_quad(st, pts[0], pts[1], pts[2], pts[3], xf.basis * (turn * nf))
+
+
+## A flat arrow on a top face, pointing towards -Z.
+static func _arrow(st: SurfaceTool, xf: Transform3D, at: Vector3, length: float, color: Color) -> void:
+	st.set_color(color)
+	var w := length * 0.45
+	var tip := xf * (at + Vector3(0, 0, -length * 0.5))
+	var l := xf * (at + Vector3(-w, 0, 0))
+	var r := xf * (at + Vector3(w, 0, 0))
+	_add_tri(st, tip, l, r, xf.basis * Vector3.UP)
+	_obox(st, xf, at + Vector3(0, -0.002, length * 0.22), Vector3(w * 0.7, 0.004, length * 0.45), color)
+
+
+## A steering wheel facing the seat (+Z), as eight short bars.
+static func _ring(st: SurfaceTool, xf: Transform3D, center: Vector3, radius: float, color: Color) -> void:
+	var seg := 2.0 * radius * sin(PI / 8.0)
+	for i in 8:
+		var a := i * TAU / 8.0
+		var b := Basis(Vector3.BACK, a)
+		_obox(st, xf, center + b * Vector3(0, radius, 0), Vector3(seg * 1.1, 0.018, 0.018), color, b)
 
 
 ## A single-cell cube, skipping faces hidden against another full cube.

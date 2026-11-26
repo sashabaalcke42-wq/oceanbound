@@ -139,8 +139,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENSITIVITY, -1.4, 1.2 if first_person else 0.6)
 	elif event is InputEventMouseButton and event.pressed:
 		_capture_mouse(true)
-	elif event.is_action_pressed(&"toggle_mouse"):
-		_capture_mouse(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED)
 	elif event.is_action_pressed(&"view_toggle"):
 		set_first_person(not first_person)
 	elif event.is_action_pressed(&"interact"):

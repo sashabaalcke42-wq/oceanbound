@@ -25,6 +25,9 @@ var workshop: Node3D
 var town: Node3D
 ## The menu screen open right now, if any.
 var screen: CanvasLayer
+var pause_menu: CanvasLayer
+## Set when quitting on purpose without saving.
+var skip_autosave := false
 
 
 func _ready() -> void:
@@ -56,7 +59,63 @@ func _ready() -> void:
 	player.global_position = dock.get(&"player_spawn").global_position
 	player.set(&"respawn_point", player.global_position)
 
-	new_game()
+	if SaveGame.exists():
+		load_game()
+	else:
+		new_game()
+
+
+## Esc (when no other menu is open) pauses the game.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"toggle_mouse") and pause_menu == null and screen == null \
+			and workshop == null and player.get(&"state") != 2:
+		get_viewport().set_input_as_handled()
+		open_pause_menu()
+
+
+func open_pause_menu() -> void:
+	pause_menu = preload("res://ui/pause_menu.gd").new()
+	pause_menu.set(&"world", self)
+	pause_menu.connect(&"resumed", func(): pause_menu = null)
+	add_child(pause_menu)
+
+
+## Closing the window saves the game.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and not skip_autosave:
+		SaveGame.save(self)
+
+
+## Carry on from the save: money, belongings, the boat design, where the boat
+## and the player were. Jobs are dealt afresh.
+func load_game() -> void:
+	var d := SaveGame.read()
+	if d.is_empty():
+		new_game()
+		return
+	Inventory.from_dict(d.get("inventory", {}))
+	Economy.from_dict(d.get("economy", {}))
+	Jobs.reset()
+	GameState.tutorial_done = bool(d.get("tutorial_done", false))
+	var design_data: Variant = d.get("design")
+	GameState.set_player_design(VesselDesign.from_dict(design_data) if design_data is Dictionary else null)
+	var b: Variant = d.get("boat")
+	if GameState.player_design and b is Dictionary:
+		_spawn_player_boat(GameState.player_design)
+		if is_instance_valid(player_boat):
+			var at := Vector3(b["x"], VesselBuilder.float_height(player_boat.get(&"stats")), b["z"])
+			player_boat.global_transform = Transform3D(Basis(Vector3.UP, float(b["yaw"])), at)
+			player_boat.set(&"fuel_l", float(b.get("fuel_l", 0.0)))
+			player_boat.set(&"water_l", float(b.get("water_l", 0.0)))
+			# Tied up if beside a jetty, otherwise left at anchor where it was.
+			if not player_boat.call(&"try_moor"):
+				player_boat.call(&"moor_here")
+	var p: Variant = d.get("player")
+	if p is Dictionary:
+		player.global_position = Vector3(p["x"], float(p["y"]) + 0.3, p["z"])
+		player.set(&"_yaw", float(p["yaw"]))
+	await get_tree().create_timer(1.0).timeout
+	EventBus.notify.emit("Welcome back. Your game is loaded. Esc opens the menu to save, quit or start over.")
 
 
 func _physics_process(_delta: float) -> void:

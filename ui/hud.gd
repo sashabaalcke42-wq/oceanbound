@@ -147,7 +147,13 @@ static func bearing_of(v: Vector3) -> float:
 
 func _update_compass() -> void:
 	var cam := get_viewport().get_camera_3d()
-	if cam == null:
+	# Out of the way while a menu or the workshop is open.
+	var who := get_tree().get_first_node_in_group(&"player")
+	var in_menu: bool = who != null and who.get(&"state") == 2
+	var minimap := get_node_or_null(^"Minimap") as CanvasItem
+	if minimap:
+		minimap.visible = not in_menu
+	if cam == null or in_menu:
 		_compass_strip.visible = false
 		return
 	_compass_strip.visible = true

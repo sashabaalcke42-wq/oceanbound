@@ -6,11 +6,16 @@ extends Node3D
 ## editing live in DesignEditor; the panels live in workshop_ui.gd.
 ##
 ## Mouse: left click places (drag for a rectangle), right click removes,
-## right-drag orbits, wheel zooms. Keys: R rotates, T tilts, Ctrl+Z / Ctrl+Y
-## undo and redo, Esc closes.
+## right-drag orbits, wheel zooms. Keys: R rotates, T tilts, X switches
+## between building and deleting, Ctrl+Z / Ctrl+Y undo and redo, Esc closes.
+##
+## The ghost under the mouse is the real piece, at the angle it will go in:
+## green if it fits, red if not. In delete mode the ghost is the piece (or,
+## dragging, every piece in the rectangle) that a left click will remove.
 
 signal closed
 signal launch_requested(design: VesselDesign)
+signal mode_changed
 
 const CELL := VesselDesign.CELL
 const ORBIT_SPEED := 0.008
@@ -36,6 +41,8 @@ var selected_block: StringName = &"hull_aluminium"
 var color_index := 0
 var yaw_steps := 0
 var tilt_index := 0
+## Left click removes pieces instead of placing them.
+var delete_mode := false
 
 ## Tutorial state. step_index is -1 when the tutorial is off.
 var blueprint: VesselDesign
@@ -50,6 +57,10 @@ var _preview: MeshInstance3D
 var _outline: MeshInstance3D
 var _ghost: MeshInstance3D
 var _ghost_mat := StandardMaterial3D.new()
+## The real piece(s) under the mouse, see-through, at their angle.
+var _ghost_piece: MeshInstance3D
+var _ghost_piece_mat := StandardMaterial3D.new()
+var _ghost_key := ""
 var _grid: MeshInstance3D
 var _ui: Control
 
@@ -95,6 +106,14 @@ func open(design: VesselDesign, p_facility: Dictionary, with_tutorial: bool) -> 
 	_ghost.material_override = _ghost_mat
 	_ghost.mesh = BoxMesh.new()
 	add_child(_ghost)
+	_ghost_piece = MeshInstance3D.new()
+	_ghost_piece_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ghost_piece_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_ghost_piece_mat.render_priority = 12
+	_ghost_piece_mat.roughness = 0.6
+	_ghost_piece.material_override = _ghost_piece_mat
+	_ghost_piece.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_ghost_piece)
 	_build_grid()
 
 	if with_tutorial:
@@ -129,7 +148,19 @@ func current_color() -> Color:
 
 func select_block(id: StringName) -> void:
 	selected_block = id
+	set_delete_mode(false)
 	_ui.call(&"refresh")
+
+
+func set_delete_mode(on: bool) -> void:
+	if on == delete_mode:
+		return
+	delete_mode = on
+	_drag_start = null
+	_ghost_key = ""
+	mode_changed.emit()
+	if _ui:
+		_ui.call(&"refresh")
 
 
 func analysis() -> Dictionary:
@@ -195,7 +226,13 @@ func _unhandled_input(event: InputEvent) -> void:
 func _on_mouse_button(e: InputEventMouseButton) -> void:
 	match e.button_index:
 		MOUSE_BUTTON_LEFT:
-			if e.pressed and _hover_valid:
+			if delete_mode:
+				if e.pressed and _hover_has_block:
+					_drag_start = _hover_block
+				elif not e.pressed and _drag_start != null:
+					_delete_from_drag()
+					_drag_start = null
+			elif e.pressed and _hover_valid:
 				_drag_start = _hover_target
 			elif not e.pressed and _drag_start != null:
 				_place_from_drag()
@@ -227,6 +264,8 @@ func _on_key(e: InputEventKey) -> void:
 		yaw_steps = (yaw_steps + 1) % 4
 	elif e.keycode == KEY_T:
 		tilt_index = (tilt_index + 1) % _tilts.size()
+	elif e.keycode == KEY_X:
+		set_delete_mode(not delete_mode)
 	elif e.keycode == KEY_C:
 		color_index = (color_index + 1) % COLORS.size()
 		_ui.call(&"refresh")
@@ -249,6 +288,14 @@ func _place_from_drag() -> void:
 				current_rot(), current_color())
 	if problem != "":
 		EventBus.notify.emit(problem)
+
+
+## Remove the piece clicked, or every piece in the rectangle dragged across
+## (on the layer where the drag began), as one undoable step.
+func _delete_from_drag() -> void:
+	var start: Vector3i = _drag_start
+	var end := _hover_block if _hover_has_block else start
+	editor.remove_many(_rect_cells(start, end))
 
 
 ## Cells of the rectangle between two cells, on the starting cell's layer.
@@ -283,20 +330,63 @@ func _update_hover() -> void:
 
 
 func _update_ghost() -> void:
+	if delete_mode:
+		_update_delete_ghost()
+		return
 	_ghost.visible = _hover_valid and not _orbiting
+	_ghost_piece.visible = _ghost.visible
 	if not _ghost.visible:
 		return
 	var rot := current_rot()
 	var cells: Array[Vector3i] = []
+	var entries: Array[Dictionary] = []
 	var problem := ""
 	var def := BlockLibrary.get_block(selected_block)
 	if _drag_start != null and def.size == Vector3i.ONE:
 		cells = _rect_cells(_drag_start, _hover_target)
 		problem = "" if Inventory.count(selected_block) >= 1 else "none left"
+		for c in cells:
+			entries.append({"id": selected_block, "cell": c, "rot": rot, "color": _piece_color(def)})
 	else:
 		var origin := DesignEditor.origin_for_target(selected_block, _hover_target, rot)
-		cells = VesselDesign.cells_of({"id": selected_block, "cell": origin, "rot": rot})
+		var entry := {"id": selected_block, "cell": origin, "rot": rot, "color": _piece_color(def)}
+		cells = VesselDesign.cells_of(entry)
 		problem = editor.placement_problem(selected_block, origin, rot)
+		entries.append(entry)
+	_show_box(cells, Color(0.3, 1.0, 0.45, 0.12) if problem == "" else Color(1.0, 0.3, 0.25, 0.18))
+	_show_pieces(entries, Color(0.45, 1.0, 0.55, 0.6) if problem == "" else Color(1.0, 0.35, 0.3, 0.6))
+
+
+## In delete mode: the piece under the mouse, or every piece in the dragged
+## rectangle, shown in red.
+func _update_delete_ghost() -> void:
+	var show := (_hover_has_block or _drag_start != null) and not _orbiting
+	_ghost.visible = show
+	_ghost_piece.visible = show
+	if not show:
+		return
+	var start: Vector3i = _drag_start if _drag_start != null else _hover_block
+	var end := _hover_block if _hover_has_block else start
+	var cells := _rect_cells(start, end)
+	var entries: Array[Dictionary] = []
+	for c in cells:
+		var e := editor.entry_at(c)
+		if not e.is_empty() and not entries.any(func(x): return is_same(x, e)):
+			entries.append(e)
+	_show_box(cells, Color(1.0, 0.25, 0.2, 0.1))
+	_show_pieces(entries, Color(1.0, 0.25, 0.2, 0.65), 1.04)
+
+
+func _piece_color(def: BlockDef) -> Color:
+	var c := current_color()
+	return c if c.a > 0.0 else def.default_color
+
+
+## A faint box round the cells, so the footprint is clear.
+func _show_box(cells: Array[Vector3i], color: Color) -> void:
+	if cells.is_empty():
+		_ghost.visible = false
+		return
 	var lo: Vector3i = cells[0]
 	var hi: Vector3i = cells[0]
 	for c in cells:
@@ -305,7 +395,26 @@ func _update_ghost() -> void:
 	var size := Vector3(hi - lo + Vector3i.ONE) * CELL
 	(_ghost.mesh as BoxMesh).size = size * 1.02
 	_ghost.position = (Vector3(lo + hi) * 0.5) * CELL
-	_ghost_mat.albedo_color = Color(0.3, 1.0, 0.45, 0.35) if problem == "" else Color(1.0, 0.3, 0.25, 0.35)
+	_ghost_mat.albedo_color = color
+
+
+## The pieces themselves, see-through, at their real shape and angle. The
+## mesh is only rebuilt when what it shows changes.
+func _show_pieces(entries: Array[Dictionary], tint: Color, grow := 1.0) -> void:
+	var key := "%s|%s" % [str(entries.map(func(e): return [e["id"], e["cell"], e["rot"]])), tint]
+	if key != _ghost_key:
+		_ghost_key = key
+		var d := VesselDesign.new()
+		for e in entries:
+			d.blocks.append(e)
+		_ghost_piece.mesh = VesselBuilder.mesh_for(d)
+	_ghost_piece_mat.albedo_color = tint
+	# Grown slightly about its own middle, so it shows over a piece it covers.
+	var mid := Vector3.ZERO
+	for e in entries:
+		mid += Vector3(e["cell"]) * CELL
+	mid /= maxf(entries.size(), 1)
+	_ghost_piece.transform = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * grow), mid - mid * grow)
 
 
 func _on_design_changed() -> void:

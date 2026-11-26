@@ -16,6 +16,7 @@ var _balance_before := 0
 
 
 func _ready() -> void:
+	SaveGame.enabled = false  # a fresh world, and no save left behind
 	main = load("res://world/main.tscn").instantiate()
 	add_child(main)
 	player = main.get_node("Player")
