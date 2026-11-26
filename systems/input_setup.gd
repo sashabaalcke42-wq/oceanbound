@@ -18,6 +18,7 @@ const BINDINGS := {
 	"view_toggle": [KEY_V],
 	"bail": [KEY_B],
 	"map_toggle": [KEY_M],
+	"fullscreen_toggle": [KEY_F11],
 }
 
 
@@ -30,3 +31,13 @@ func _enter_tree() -> void:
 			var ev := InputEventKey.new()
 			ev.physical_keycode = keycode
 			InputMap.action_add_event(action, ev)
+
+
+## F11 switches between fullscreen and a maximised window, from anywhere.
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"fullscreen_toggle"):
+		var full := DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN,
+				DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED if full
+				else DisplayServer.WINDOW_MODE_FULLSCREEN)
+		get_viewport().set_input_as_handled()

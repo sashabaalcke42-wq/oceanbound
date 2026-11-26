@@ -29,6 +29,7 @@ See `docs/` for architecture notes and decisions.
 | B (hold) | Bail water out of the boat you are in | Bail |
 | V | First or third person | First or third person |
 | M | Full map | Full map |
+| F11 | Fullscreen on or off | Fullscreen on or off |
 | Esc | Free or capture the mouse | |
 
 Your boat is tied up alongside your dock. Walk up beside it and press **E**

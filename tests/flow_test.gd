@@ -9,9 +9,29 @@ var _steps: Array[Callable] = []
 var _wait := 0
 var _busy := false
 var _failures: Array[String] = []
+var _errors := ErrorCounter.new()
+
+
+## Counts every engine and script error, so the run fails on any of them
+## even when no check notices (in the editor a script error stops the game).
+class ErrorCounter extends Logger:
+	var errors: Array[String] = []
+	var _lock := Mutex.new()
+
+	func _log_error(function: String, file: String, line: int, code: String, rationale: String,
+			_editor_notify: bool, error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if error_type == ERROR_TYPE_WARNING:
+			return
+		_lock.lock()
+		errors.append("%s (%s:%d %s)" % [rationale if rationale != "" else code, file, line, function])
+		_lock.unlock()
+
+	func _log_message(_message: String, _error: bool) -> void:
+		pass
 
 
 func _ready() -> void:
+	OS.add_logger(_errors)
 	main = load("res://world/main.tscn").instantiate()
 	add_child(main)
 	player = main.get_node("Player")
@@ -63,13 +83,31 @@ func _close_workshop() -> void:
 	_wait = 10
 
 
+## Pressed through the workshop's own buttons, part way through the
+## tutorial, as a player would.
 func _undo_redo() -> void:
 	var ed: DesignEditor = _ws().get(&"editor")
-	ed.undo()
-	ed.redo()
-	ed.clear_all()
-	ed.undo()
+	_check(_ws().get(&"step_index") >= 0, "tutorial carries on when you come back to an unfinished build")
+	_press("Clear")
+	_check(ed.design.blocks.is_empty(), "clear empties the build")
+	var placed := 0
+	for e in StarterKit.blueprint().blocks:
+		if placed < 4 and ed.place(e["id"], e["cell"], e["rot"]) == "":
+			placed += 1
+	var before := ed.design.blocks.size()
+	for name in ["Undo", "Redo", "Undo", "Clear", "Undo", "Clear", "Undo", "Undo"]:
+		_press(name)
+	_check(ed.design.blocks.size() == before - 2, "undo and clear buttons work mid-tutorial")
+	_check(_errors.errors.is_empty(), "no errors from the workshop buttons")
 	_wait = 5
+
+
+func _press(text: String) -> void:
+	for b: Button in _ws().find_children("*", "Button", true, false):
+		if b.text == text:
+			b.pressed.emit()
+			return
+	_check(false, "workshop has a %s button" % text)
 
 
 func _build_rest() -> void:
@@ -233,6 +271,9 @@ func _swimming() -> void:
 
 func _done() -> void:
 	_check(player.get(&"state") == 0 and player.global_position.y > 0.0, "player is rescued from the sea")
+	for e in _errors.errors:
+		_failures.append("error: " + e)
+		print("  FAIL  error: " + e)
 	print("%d failure(s)" % _failures.size())
 	get_tree().quit(1 if not _failures.is_empty() else 0)
 

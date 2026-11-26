@@ -102,6 +102,8 @@ func open(design: VesselDesign, p_facility: Dictionary, with_tutorial: bool) -> 
 		steps = StarterKit.tutorial_steps()
 		step_index = 0
 		_enter_step()
+		# Coming back to a half-built boat: skip the steps already done.
+		_advance_tutorial()
 
 	_ui = preload("res://vessel/editor/workshop_ui.gd").new()
 	_ui.set(&"workshop", self)
