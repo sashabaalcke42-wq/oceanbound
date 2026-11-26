@@ -134,7 +134,7 @@ func _compass_label(font_size: int) -> Label:
 	l.add_theme_font_size_override(&"font_size", font_size)
 	l.add_theme_color_override(&"font_outline_color", Color(0, 0, 0, 0.85))
 	l.add_theme_constant_override(&"outline_size", 5)
-	l.custom_minimum_size = Vector2(200, 0)
+	l.custom_minimum_size = Vector2(300, 0)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_compass_strip.add_child(l)
 	return l
@@ -177,35 +177,37 @@ func _update_compass() -> void:
 		var p := Locations.position_of(ids[i])
 		var flat := Vector3(p.x - from.x, 0.0, p.z - from.z)
 		var d := flat.length()
-		l.text = "▼\n%s\n%d m" % [Locations.name_of(ids[i]), roundi(d)]
-		if ids[i] == target:
-			l.modulate = Color(1.0, 0.82, 0.3)
-		elif ids[i] == &"town_quay":
-			l.modulate = Color(0.6, 0.95, 1.0)
-		else:
-			l.modulate = Color(1, 1, 1, 0.85)
+		var gold := ids[i] == target
+		l.modulate = Color(1.0, 0.82, 0.3) if gold else (Color(0.6, 0.95, 1.0) if ids[i] == &"town_quay" else Color(1, 1, 1, 0.85))
 		_place_on_compass(l, bearing_of(flat), heading, 20.0)
-	_unstack_marks()
+		l.set_meta(&"name", "%s  %d m" % [Locations.name_of(ids[i]), roundi(d)])
+		# Nearer the middle of the bar, and the job's target, get the name.
+		var rel := absf(wrapf(bearing_of(flat) - heading, -180.0, 180.0))
+		l.set_meta(&"priority", rel - (1000.0 if gold else 0.0))
+	_name_marks()
 
 
-## Drop a marker to a lower row when it would overlap one beside it.
-func _unstack_marks() -> void:
+## Every place gets a small marker on the bar; names go in one row under
+## it, best first (the job's target, then whatever is nearest the middle),
+## and a name that would overlap one already shown is left off.
+func _name_marks() -> void:
 	var shown := _compass_marks.filter(func(l: Label): return l.visible)
-	shown.sort_custom(func(a: Label, b: Label): return a.position.x < b.position.x)
-	var row_ends: Array[float] = []
+	shown.sort_custom(func(a: Label, b: Label): return a.get_meta(&"priority") < b.get_meta(&"priority"))
+	var taken: Array[Vector2] = []
 	var font := ThemeDB.fallback_font
 	for l: Label in shown:
-		var w := 0.0
-		for line in l.text.split("\n"):
-			w = maxf(w, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x)
+		var name: String = l.get_meta(&"name")
+		var w := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
 		var centre := l.position.x + l.size.x * 0.5
-		var row := 0
-		while row < row_ends.size() and row_ends[row] > centre - w * 0.5 - 8.0:
-			row += 1
-		if row == row_ends.size():
-			row_ends.append(0.0)
-		row_ends[row] = centre + w * 0.5
-		l.position.y += row * 52.0
+		var free := absf(centre) + w * 0.5 < COMPASS_HALF_WIDTH + 60.0
+		for span in taken:
+			if centre + w * 0.5 + 10.0 > span.x and centre - w * 0.5 - 10.0 < span.y:
+				free = false
+		if free and taken.size() < 3:
+			taken.append(Vector2(centre - w * 0.5, centre + w * 0.5))
+			l.text = "▼\n" + name
+		else:
+			l.text = "▼"
 
 
 ## Put a label on the strip at a compass bearing, or hide it when off the strip.
