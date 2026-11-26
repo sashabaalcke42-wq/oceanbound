@@ -33,6 +33,8 @@ GameState="*res://systems/game_state.gd"
 window/size/viewport_width=1600
 window/size/viewport_height=900
 window/size/mode=2
+window/size/window_width_override=2304
+window/size/window_height_override=1296
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
