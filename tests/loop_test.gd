@@ -214,7 +214,19 @@ func _fuel() -> void:
 	var litres: float = pump.refuel()
 	var cap: float = boat.get(&"stats")["fuel_capacity"]
 	_check(is_equal_approx(boat.get(&"fuel_l"), cap), "pump fills the tank")
-	_check(Economy.balance == before - ceili(litres * pump.PRICE_PER_LITRE), "fuel costs money")
+	_check(Economy.balance == before - ceili(litres * pump.PRICE_PER_LITRE - 0.0001), "fuel costs money")
+	# A tank just short of full still tops up when you have plenty of money.
+	Economy.earn(1000, "test")
+	boat.set(&"fuel_l", cap - 0.5)
+	var money := Economy.balance
+	_check(is_equal_approx(pump.refuel(), 0.5), "tops up the last half litre")
+	_check(Economy.balance == money - 1, "half a litre costs $1")
+	_check(is_equal_approx(boat.get(&"fuel_l"), cap), "tank full after the top-up")
+	# With only $3, a near-empty tank gets $3 worth.
+	Economy.reset(3)
+	boat.set(&"fuel_l", 0.0)
+	_check(is_equal_approx(pump.refuel(), 1.5) and Economy.balance == 0, "buys what the money allows")
+	_check(pump.refuel() == 0.0, "nothing more with no money")
 
 
 func _other_screens() -> void:
