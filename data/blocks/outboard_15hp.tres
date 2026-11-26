@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"outboard_15hp"
-display_name = "15 hp outboard"
-description = "A small two-stroke outboard. Mount it on the transom with the leg below the waterline."
+display_name = "15 hp tiller outboard"
+description = "A small two-stroke outboard, steered by hand with its tiller handle. Sit within reach of the handle to drive. One per boat."
 category = 1
 size = Vector3i(1, 4, 1)
 anchor = Vector3i(0, 3, 0)
@@ -17,3 +17,4 @@ thrust_n = 2400.0
 prop_pitch_speed_ms = 15.0
 steer_angle_deg = 32.0
 fuel_burn_lph = 5.5
+tiller = true

@@ -247,7 +247,7 @@ func _on_launch_requested(design: VesselDesign) -> void:
 	workshop = null
 	player.call(&"set_in_menu", false)
 	_spawn_player_boat(design)
-	EventBus.notify.emit("\"%s\" is in the water, tied up alongside. Step aboard, walk to the helm seat and press E. Harbour Town is marked on the compass at the top of the screen." % design.design_name)
+	EventBus.notify.emit("\"%s\" is in the water, tied up alongside. Step aboard, walk to the driver's seat and press E. Harbour Town is marked on the compass at the top of the screen." % design.design_name)
 
 
 func _spawn_player_boat(design: VesselDesign) -> void:

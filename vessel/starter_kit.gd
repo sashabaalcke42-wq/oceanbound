@@ -56,8 +56,8 @@ static func tutorial_steps() -> Array[Dictionary]:
 		},
 		{
 			"title": "Fit the seats and fuel tank",
-			"hint": "The helm seat is where you drive from. Every boat needs one.",
-			"block": &"seat_helm",
+			"hint": "You steer a tiller outboard by hand, so the driver's seat goes at the back, right beside the motor.",
+			"block": &"bench_seat",
 			"covers": func(e: Dictionary) -> bool:
 				return e["id"] in [&"seat_helm", &"bench_seat", &"fuel_tank_12l"],
 		},

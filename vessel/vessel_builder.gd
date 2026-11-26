@@ -4,6 +4,14 @@ class_name VesselBuilder
 ## worked out from the blocks. Every boat in the game goes through here.
 
 const CELL := VesselDesign.CELL
+## Outboards, in the block's own frame: the motor swings about its shaft, and
+## a tiller outboard's handle ends here. The driver's seat must be within
+## TILLER_REACH of the handle (measured flat).
+const OUTBOARD_PIVOT := Vector3(0, 0, 0.03)
+const TILLER_GRIP := Vector3(0, 3 * CELL + 0.15, -0.44)
+const TILLER_REACH := 0.8
+## The helm seat's wheel centre, from the middle of the seat's two cells.
+const HELM_WHEEL := Vector3(0, 0.42, -0.3)
 const WATER_DENSITY := 1025.0
 ## Buoyant cells are grouped into columns this many cells wide, which keeps
 ## the number of wave samples per boat low.
@@ -46,8 +54,24 @@ static func build(design: VesselDesign, problems: Array[String] = []) -> RigidBo
 
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.name = "Hull"
-	mesh_instance.mesh = _build_mesh(design, occupancy)
+	mesh_instance.mesh = _build_mesh(design, occupancy, true)
 	vessel.add_child(mesh_instance)
+	# Each outboard on its own pivot, so it swings with the steering.
+	for i in stats["engines"].size():
+		var e: Dictionary = stats["engines"][i]
+		var pivot := Node3D.new()
+		pivot.name = "Outboard%d" % i
+		pivot.position = e["pivot"]
+		var motor := MeshInstance3D.new()
+		motor.mesh = block_mesh(design.blocks[e["block"]])
+		motor.position = -(e["pivot"] as Vector3)
+		pivot.add_child(motor)
+		if e["tiller"]:
+			var grip := Marker3D.new()
+			grip.name = "TillerGrip"
+			grip.position = e["grip"]
+			motor.add_child(grip)
+		vessel.add_child(pivot)
 
 	for aabb in _collision_boxes(design):
 		var col := CollisionShape3D.new()
@@ -74,6 +98,9 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 	var fuel := 0.0
 	var helm_pos := Vector3.ZERO
 	var has_helm := false
+	var wheel_seat := Vector3.INF
+	var wheel_grips: Array[Vector3] = []  # left and right hand on the helm wheel
+	var seat_spots: Array[Vector3] = []  # where someone would sit, feet on the floor
 	var seats := 0
 	var pump_lps := 0.0
 	var min_z := INF
@@ -93,10 +120,15 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 		fuel += def.fuel_capacity_l
 		seats += def.seats
 		pump_lps += def.pump_lph / 3600.0
-		if def.is_helm and not has_helm:
-			has_helm = true
-			# Feet a little below the seat top, as if sitting.
-			helm_pos = center + Vector3(0, CELL * 0.5 - 0.3, 0)
+		# Feet on the floor at the bottom of the seat's cell; the sitting pose
+		# puts the hips on the cushion (see the seat models).
+		if def.seats > 0:
+			seat_spots.append(center + Vector3(0, -CELL * 0.5, 0))
+			if def.is_helm and wheel_seat == Vector3.INF:
+				wheel_seat = seat_spots[-1]
+				var seat_xf := Transform3D(Orientations.basis(entry["rot"]), Vector3(entry["cell"]) * CELL)
+				var wheel := Vector3(0.5 * CELL, 0, 0) + HELM_WHEEL
+				wheel_grips = [seat_xf * (wheel + Vector3(-0.075, 0, 0)), seat_xf * (wheel + Vector3(0.075, 0, 0))]
 		if def.thrust_n > 0.0:
 			var lowest: Vector3i = cells[0]
 			var highest: Vector3i = cells[0]
@@ -106,7 +138,14 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 				if c.y > highest.y:
 					highest = c
 			var b := Orientations.basis(entry["rot"])
+			var block_xf := Transform3D(b, Vector3(entry["cell"]) * CELL)
 			engines.append({
+				"tiller": def.tiller,
+				# The motor swings about its shaft, and the tiller handle is
+				# where the driver's hand goes (both in the boat's frame).
+				"pivot": block_xf * OUTBOARD_PIVOT,
+				"grip": block_xf * TILLER_GRIP,
+				"block": design.blocks.find(entry),
 				"pos": Vector3(lowest) * CELL,
 				"head": Vector3(highest) * CELL,
 				"pitch_speed": def.prop_pitch_speed_ms,
@@ -146,6 +185,22 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 		max_x = maxf(max_x, p.x)
 
 	var com := moment / mass if mass > 0.0 else Vector3.ZERO
+
+	# Where the driver sits. A tiller boat is driven from the seat nearest the
+	# tiller handle, if it is within reach; anything else from the helm seat.
+	var tillers := engines.filter(func(e): return e["tiller"])
+	if not tillers.is_empty():
+		var grip: Vector3 = tillers[0]["grip"]
+		var best := INF
+		for spot in seat_spots:
+			var d := Vector2(spot.x - grip.x, spot.z - grip.z).length()
+			if d <= TILLER_REACH and d < best:
+				best = d
+				helm_pos = spot
+				has_helm = true
+	elif wheel_seat != Vector3.INF:
+		helm_pos = wheel_seat
+		has_helm = true
 	var bilge := _bilge(enclosed, hull_cells)
 	var buoy_columns: Array[Dictionary] = []
 	var buoyant_volume := 0.0
@@ -176,6 +231,10 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 		"total_thrust": engines.reduce(func(acc, e): return acc + e["thrust"], 0.0),
 		"fuel_capacity": fuel,
 		"has_helm": has_helm,
+		"tiller_count": tillers.size(),
+		"remote_count": engines.size() - tillers.size(),
+		"has_wheel": wheel_seat != Vector3.INF,
+		"wheel_grips": wheel_grips,
 		"helm_position": helm_pos,
 		"seats": seats,
 		"pump_lps": pump_lps,
@@ -329,7 +388,17 @@ static func analyse(design: VesselDesign) -> Dictionary:
 	if stats["buoyant_volume"] <= 0.0:
 		problems.append("There are no hull blocks to keep it afloat.")
 		return out
-	if not stats["has_helm"]:
+	var tillers: int = stats["tiller_count"]
+	var remotes: int = stats["remote_count"]
+	if tillers > 0 and remotes > 0:
+		problems.append("Tiller and remote outboards can't be mixed on one boat. Use one kind.")
+	elif tillers > 1:
+		problems.append("A boat takes only one tiller outboard. Use remote outboards for twin motors.")
+	elif tillers == 1 and not stats["has_helm"]:
+		problems.append("The driver must sit within reach of the tiller. Put a seat just in front of the motor.")
+	elif remotes > 0 and not stats["has_wheel"]:
+		problems.append("Remote outboards are steered from a helm seat with a wheel. Add one.")
+	elif not stats["has_helm"]:
 		problems.append("It needs a helm seat to drive from.")
 
 	# Calm-water estimates, with one person aboard.
@@ -348,6 +417,23 @@ static func analyse(design: VesselDesign) -> Dictionary:
 		problems.append("It is too heavy for its hull and would sink. Add hull blocks.")
 	elif freeboard < 0.15:
 		warnings.append("It sits very low in the water. Waves may swamp it.")
+
+	# Side-to-side balance with you at the helm: how far the weight sits off
+	# the middle of the hull, and roughly how much the boat will lean for it
+	# (small-angle stability from the waterplane's width).
+	var buoy_x := 0.0
+	var vol_sum := 0.0
+	for col: Dictionary in stats["columns"]:
+		buoy_x += (col["pos"] as Vector3).x * col["volume"]
+		vol_sum += col["volume"]
+	buoy_x /= maxf(vol_sum, 0.0001)
+	var com_x: float = (stats["center_of_mass"].x * stats["mass"] + stats["helm_position"].x * 80.0) / loaded
+	var beam: float = maxf(stats["beam"], CELL)
+	var metacentre := beam * beam / (12.0 * maxf(draft, 0.02))
+	var lean_deg := rad_to_deg(atan((com_x - buoy_x) / metacentre))
+	if absf(lean_deg) > 3.0:
+		warnings.append("It leans %.0f° to the %s. Move weight across to balance it." % [
+				absf(lean_deg), "right" if lean_deg > 0.0 else "left"])
 
 	var engines: Array = stats["engines"]
 	if engines.is_empty():
@@ -377,6 +463,7 @@ static func analyse(design: VesselDesign) -> Dictionary:
 		"loaded_mass": loaded,
 		"draft": draft,
 		"freeboard": freeboard,
+		"lean_deg": lean_deg,
 		"top_speed_kn": top * 1.944,
 	}
 	return out
@@ -430,7 +517,15 @@ static func mesh_for(design: VesselDesign) -> ArrayMesh:
 	return _build_mesh(design, occupancy)
 
 
-static func _build_mesh(design: VesselDesign, occupancy: Dictionary) -> ArrayMesh:
+## Just one block's model, in the boat's frame (for the outboards, which are
+## separate so they can swing as you steer).
+static func block_mesh(entry: Dictionary) -> ArrayMesh:
+	var d := VesselDesign.new()
+	d.blocks.append(entry)
+	return mesh_for(d)
+
+
+static func _build_mesh(design: VesselDesign, occupancy: Dictionary, skip_engines := false) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var mat := StandardMaterial3D.new()
@@ -443,6 +538,8 @@ static func _build_mesh(design: VesselDesign, occupancy: Dictionary) -> ArrayMes
 
 	for entry in design.blocks:
 		var def := BlockLibrary.get_block(entry["id"])
+		if skip_engines and def.thrust_n > 0.0:
+			continue
 		st.set_color(entry["color"])
 		if def.shape == BlockDef.Shape.WEDGE:
 			_add_wedge(st, Vector3(entry["cell"]) * CELL, Orientations.basis(entry["rot"]))
@@ -474,16 +571,27 @@ static func _add_detailed(st: SurfaceTool, entry: Dictionary) -> bool:
 	var col: Color = entry["color"]
 	var C := CELL
 	match String(entry["id"]):
-		"outboard_15hp":
+		"outboard_15hp", "outboard_15hp_remote":
 			# Four cells tall: propeller at the bottom (y 0), powerhead on top
-			# (y 3). Thrust pushes the boat towards -Z, so the propeller sits at
-			# the back (+Z) and the tiller handle reaches forward into the boat.
-			_obox(st, xf, Vector3(0, 3 * C + 0.01, 0.03), Vector3(0.2, 0.22, 0.26), col)  # cowling
-			_obox(st, xf, Vector3(0, 3 * C + 0.13, 0.03), Vector3(0.17, 0.03, 0.22), col.lightened(0.25))  # cap
-			_arrow(st, xf, Vector3(0, 3 * C + 0.147, 0.02), 0.14, _WHITE)  # points forward
-			_obox(st, xf, Vector3(0, 3 * C - 0.04, -0.15), Vector3(0.04, 0.04, 0.16), _DARK)  # tiller
-			_obox(st, xf, Vector3(0, 3 * C - 0.04, -0.24), Vector3(0.05, 0.05, 0.05), _DARK)  # grip
-			_obox(st, xf, Vector3(0, 2 * C - 0.04, -0.06), Vector3(0.12, 0.1, 0.05), _METAL)  # transom clamp
+			# (y 3), standing just above the transom. Thrust pushes the boat
+			# towards -Z, so the propeller sits at the back (+Z).
+			var tiller: bool = BlockLibrary.get_block(entry["id"]).tiller
+			var trim := _DARK if not tiller else col.lightened(0.25)
+			_obox(st, xf, Vector3(0, 3 * C + 0.13, 0.04), Vector3(0.2, 0.24, 0.28), col)  # cowling
+			_obox(st, xf, Vector3(0, 3 * C + 0.26, 0.04), Vector3(0.17, 0.03, 0.24), trim)  # cap
+			_arrow(st, xf, Vector3(0, 3 * C + 0.277, 0.03), 0.14, _WHITE if tiller else _DARK)  # points forward
+			_obox(st, xf, Vector3(0, 3 * C + 0.06, 0.04), Vector3(0.205, 0.02, 0.285), trim)  # cowling seam
+			_obox(st, xf, Vector3(0, 3 * C - 0.04, 0.03), Vector3(0.13, 0.12, 0.16), _DARK)  # midsection
+			_obox(st, xf, Vector3(0, 3 * C + 0.1, -0.13), Vector3(0.12, 0.1, 0.08), _METAL)  # clamp over the transom
+			_obox(st, xf, Vector3(0, 3 * C + 0.02, -0.2), Vector3(0.1, 0.03, 0.03), _METAL)  # clamp screws
+			if tiller:
+				_obox(st, xf, Vector3(0, TILLER_GRIP.y, -0.25), Vector3(0.04, 0.04, 0.3), _DARK)  # tiller arm
+				_obox(st, xf, TILLER_GRIP + Vector3(0, 0, 0.02), Vector3(0.055, 0.055, 0.1), Color(0.2, 0.2, 0.21))  # twist grip
+				_obox(st, xf, Vector3(0.03, TILLER_GRIP.y + 0.015, -0.13), Vector3(0.025, 0.025, 0.025), Color(0.85, 0.12, 0.1))  # kill switch
+			else:
+				# Steering link and the cable running forward to the wheel.
+				_obox(st, xf, Vector3(0, 3 * C + 0.0, -0.13), Vector3(0.03, 0.03, 0.12), _METAL)
+				_obox(st, xf, Vector3(0, 3 * C + 0.0, -0.26), Vector3(0.025, 0.025, 0.14), _DARK)
 			_obox(st, xf, Vector3(0, 1.5 * C, 0.03), Vector3(0.06, 0.62, 0.09), _DARK)  # shaft
 			_obox(st, xf, Vector3(0, 0.08, 0.03), Vector3(0.16, 0.015, 0.2), _DARK)  # cavitation plate
 			_obox(st, xf, Vector3(0, -0.02, 0.03), Vector3(0.075, 0.075, 0.22), _DARK)  # gearcase
@@ -498,17 +606,22 @@ static func _add_detailed(st: SurfaceTool, entry: Dictionary) -> bool:
 			# Two cells wide (along +X): a seat facing forward with a backrest
 			# behind and a wheel on a console in front.
 			var mid := Vector3(0.5 * C, 0, 0)
-			_obox(st, xf, mid + Vector3(0, -0.07, 0.02), Vector3(0.44, 0.1, 0.2), col)  # cushion
-			_obox(st, xf, mid + Vector3(0, 0.06, 0.11), Vector3(0.44, 0.22, 0.04), col)  # backrest
-			_obox(st, xf, mid + Vector3(0, -0.11, 0.02), Vector3(0.4, 0.03, 0.18), _DARK)  # base
-			_obox(st, xf, mid + Vector3(0, 0.03, -0.12), Vector3(0.14, 0.26, 0.04), _METAL)  # console
-			_ring(st, xf, mid + Vector3(0, 0.17, -0.105), 0.075, _DARK)  # wheel
-			_obox(st, xf, mid + Vector3(0, 0.17, -0.105), Vector3(0.025, 0.025, 0.03), _METAL)  # wheel hub
+			_obox(st, xf, mid + Vector3(0, 0.05, 0.02), Vector3(0.44, 0.09, 0.2), col)  # cushion
+			_obox(st, xf, mid + Vector3(0, 0.2, 0.11), Vector3(0.44, 0.22, 0.04), col)  # backrest
+			_obox(st, xf, mid + Vector3(0, -0.055, 0.02), Vector3(0.34, 0.13, 0.16), _DARK)  # pedestal
+			# The console stands out in front, between the driver's knees, with
+			# the wheel at chest height (see HELM_WHEEL).
+			_obox(st, xf, mid + Vector3(0, 0.09, -0.38), Vector3(0.06, 0.43, 0.06), _METAL)  # post
+			_obox(st, xf, mid + Vector3(0, 0.33, -0.38), Vector3(0.16, 0.09, 0.1), _METAL)  # dash
+			_obox(st, xf, mid + HELM_WHEEL + Vector3(0, 0, -0.05), Vector3(0.03, 0.03, 0.08), _DARK)  # column
+			_ring(st, xf, mid + HELM_WHEEL, 0.08, _DARK)  # wheel
+			_obox(st, xf, mid + HELM_WHEEL, Vector3(0.03, 0.03, 0.03), _METAL)  # wheel hub
 			return true
 		"bench_seat":
-			_obox(st, xf, Vector3(0, -0.02, 0), Vector3(0.25, 0.05, 0.2), col)  # plank
+			# Plank at the same height as the helm cushion, so sitting looks right.
+			_obox(st, xf, Vector3(0, 0.07, 0), Vector3(0.25, 0.05, 0.2), col)  # plank
 			for lx in [-0.09, 0.09]:
-				_obox(st, xf, Vector3(lx, -0.09, 0), Vector3(0.03, 0.1, 0.16), col.darkened(0.3))
+				_obox(st, xf, Vector3(lx, -0.03, 0), Vector3(0.03, 0.15, 0.16), col.darkened(0.3))
 			return true
 		"fuel_tank_12l":
 			var mid := Vector3(0.5 * C, 0, 0)

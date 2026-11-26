@@ -73,6 +73,38 @@ func _ready() -> void:
 			e["cell"] = Vector3i(0, 1, 7)
 	_check((VesselBuilder.analyse(high)["warnings"] as Array).any(func(t): return "propeller" in t), "warns when the propeller is out of the water")
 
+	# Outboards: one tiller motor with the driver in reach, or remote motors
+	# steered from a helm seat with a wheel, never both.
+	var has := func(design: VesselDesign, word: String) -> bool:
+		return (VesselBuilder.analyse(design)["problems"] as Array).any(func(t): return word in t)
+	var bp_stats := VesselBuilder.compute_stats(StarterKit.blueprint())
+	var grip: Vector3 = bp_stats["engines"][0]["grip"]
+	var seat: Vector3 = bp_stats["helm_position"]
+	_check(bp_stats["has_helm"] and Vector2(seat.x - grip.x, seat.z - grip.z).length() < VesselBuilder.TILLER_REACH,
+			"the starter boat's driver sits within reach of the tiller")
+	var two_tillers := StarterKit.blueprint()
+	two_tillers.add_block(&"outboard_15hp", Vector3i(-2, -2, 7))
+	_check(has.call(two_tillers, "only one tiller"), "only one tiller outboard per boat")
+	var mixed := StarterKit.blueprint()
+	mixed.add_block(&"outboard_15hp_remote", Vector3i(-2, -2, 7))
+	_check(has.call(mixed, "mixed"), "tiller and remote outboards can't be mixed")
+	var far := StarterKit.blueprint()
+	for e in far.blocks:
+		if e["id"] == &"bench_seat" and e["cell"] == Vector3i(-1, 1, 5):
+			e["cell"] = Vector3i(-1, 1, 0)
+	_check(has.call(far, "within reach"), "the driver's seat must be within reach of the tiller")
+	var remote := StarterKit.blueprint()
+	for e in remote.blocks:
+		if e["id"] == &"outboard_15hp":
+			e["id"] = &"outboard_15hp_remote"
+	_check(has.call(remote, "wheel"), "remote outboards need a helm seat with a wheel")
+	remote.add_block(&"seat_helm", Vector3i(-1, 1, 3))
+	remote.add_block(&"outboard_15hp_remote", Vector3i(-2, -2, 7))
+	var ra := VesselBuilder.analyse(remote)
+	_check((ra["problems"] as Array).is_empty(), "twin remote outboards with a wheel are fine %s" % [ra["problems"]])
+	_check(is_equal_approx(ra["stats"]["total_thrust"], 4800.0), "both remote outboards push")
+	_check((ra["stats"]["wheel_grips"] as Array).size() == 2, "the wheel gives both hands a place")
+
 	# Loading needs the blocks.
 	var big := VesselDesign.new()
 	for x in 9:

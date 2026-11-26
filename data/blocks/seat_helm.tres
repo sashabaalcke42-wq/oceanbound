@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"seat_helm"
-display_name = "Helm seat"
-description = "Where you sit to drive. Every boat needs one."
+display_name = "Helm seat with wheel"
+description = "A seat with a steering wheel in front. Remote outboards are driven from here."
 category = 2
 size = Vector3i(2, 1, 1)
 mass_kg = 4.0

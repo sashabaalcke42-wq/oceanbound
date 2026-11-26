@@ -30,7 +30,9 @@ static func test_tinny() -> VesselDesign:
 	d.add_block(&"bench_seat", Vector3i(0, 1, -2))
 	d.add_block(&"bench_seat", Vector3i(1, 1, -2))
 	d.add_block(&"bench_seat", Vector3i(2, 1, -2))
-	d.add_block(&"seat_helm", Vector3i(-1, 1, 4))
+	# The driver's seat, at the back beside the motor, within reach of the
+	# tiller handle.
+	d.add_block(&"bench_seat", Vector3i(-1, 1, 5))
 	d.add_block(&"fuel_tank_12l", Vector3i(1, 1, 5))
 	# Outboard hangs off the transom, leg down below the hull.
 	d.add_block(&"outboard_15hp", Vector3i(0, -2, Z_STERN + 1))

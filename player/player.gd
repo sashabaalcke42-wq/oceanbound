@@ -31,7 +31,7 @@ const BODY_MASS := 80.0
 const FOOT_ARM := 3.2
 const HELM_ARM := 7.5
 const EYE_HEIGHT := 1.62
-const SIT_EYE_HEIGHT := 1.12
+const SIT_EYE_HEIGHT := 1.03
 ## Chest depth at which wading turns into swimming, and where the swimmer floats.
 const SWIM_DEPTH := 1.15
 const FLOAT_DEPTH := 1.4
@@ -444,8 +444,25 @@ func _animate(delta: float) -> void:
 	if has_meta(&"last_body_yaw"):
 		turn = angle_difference(get_meta(&"last_body_yaw"), _body_yaw) / maxf(delta, 0.001)
 	set_meta(&"last_body_yaw", _body_yaw)
+	_body.set(&"hand_targets", _hand_targets())
 	_body.call(&"animate", delta, pose, local, turn, rel.y)
 	_update_camera_rig()
+
+
+## At the helm, where the hands go: one on a tiller, or both on the wheel
+## (left then right, null for a hand left free).
+func _hand_targets() -> Array:
+	if state != State.AT_HELM or not is_instance_valid(vessel):
+		return [null, null]
+	var grip: Variant = vessel.call(&"tiller_grip")
+	if grip != null:
+		# The hand on the motor's side holds the tiller; the other rests.
+		var side: float = ((_body as Node3D).global_transform.affine_inverse() * (grip as Vector3)).x
+		return [grip, null] if side < 0.0 else [null, grip]
+	var wheel: Array = vessel.stats.get("wheel_grips", [])
+	if wheel.size() == 2 and vessel.stats.get("has_wheel", false):
+		return [vessel.global_transform * (wheel[0] as Vector3), vessel.global_transform * (wheel[1] as Vector3)]
+	return [null, null]
 
 
 func _update_camera_rig() -> void:

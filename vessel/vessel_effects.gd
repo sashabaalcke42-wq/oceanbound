@@ -7,6 +7,7 @@ const MIX_RATE := 22050.0
 var _boat: RigidBody3D
 var _spray: CPUParticles3D
 var _wake: CPUParticles3D
+var _wake_from := Vector3.ZERO
 var _audio: AudioStreamPlayer3D
 var _playback: AudioStreamGeneratorPlayback
 var _phase := 0.0
@@ -33,18 +34,37 @@ func _ready() -> void:
 	_spray.amount = 140
 	_spray.scale_amount_min = 0.4
 	_spray.scale_amount_max = 1.0
-	_wake = _particles(Vector3(mid.x, 0.3, mid.z + half_len + 0.3), 0.8, 4.0, Color(0.93, 0.97, 1, 0.75))
-	_wake.direction = Vector3(0, 0.2, 1)
-	_wake.spread = 25.0
+	# The wake: flat patches of foam left lying on the water behind the
+	# propeller, rather than puffs in the air. The emitter is moved to the
+	# water surface behind the prop every frame (see _process).
+	_wake_from = Vector3(mid.x, 0.0, mid.z + half_len + 0.3)
+	var engines: Array = stats["engines"]
+	if not engines.is_empty():
+		var sum := Vector3.ZERO
+		for e: Dictionary in engines:
+			sum += e["pos"]
+		_wake_from = sum / engines.size() + Vector3(0, 0, 0.35)
+	_wake = _particles(Vector3.ZERO, 0.7, 3.5, Color(0.93, 0.97, 1, 0.55))
+	_wake.top_level = true
+	var flat := _wake.mesh as QuadMesh
+	flat.orientation = PlaneMesh.FACE_Y
+	(flat.material as StandardMaterial3D).billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+	_wake.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_wake.emission_box_extents = Vector3(0.15, 0.0, 0.1)
+	_wake.direction = Vector3(0, 0, 1)
+	_wake.spread = 20.0
+	_wake.flatness = 1.0
 	_wake.gravity = Vector3.ZERO
 	_wake.damping_min = 1.0
 	_wake.damping_max = 2.0
-	_wake.amount = 220
+	_wake.amount = 160
+	_wake.angle_min = 0.0
+	_wake.angle_max = 360.0
 	_wake.scale_amount_min = 0.6
-	_wake.scale_amount_max = 1.6
+	_wake.scale_amount_max = 1.2
 	var curve := Curve.new()
-	curve.add_point(Vector2(0, 0.4))
-	curve.add_point(Vector2(1, 1.6))
+	curve.add_point(Vector2(0, 0.5))
+	curve.add_point(Vector2(1, 2.2))
 	_wake.scale_amount_curve = curve
 
 	if not (stats["engines"] as Array).is_empty() and AudioServer.get_driver_name() != "Dummy":
@@ -68,7 +88,12 @@ func _process(_delta: float) -> void:
 	_spray.emitting = speed > 2.0 and wet > 0.3
 	_spray.initial_velocity_min = speed * 0.25
 	_spray.initial_velocity_max = speed * 0.5
-	_wake.emitting = speed > 0.8 and wet > 0.3
+	# Foam only where the propeller is actually churning the water.
+	var at: Vector3 = _boat.global_transform * _wake_from
+	var sea := Waves.height_at(at.x, at.z)
+	_wake.global_position = Vector3(at.x, sea + 0.04, at.z)
+	_wake.global_rotation = Vector3(0, _boat.global_rotation.y, 0)
+	_wake.emitting = speed > 0.8 and wet > 0.3 and _boat.get(&"engine_running") and _boat.get(&"prop_grip") > 0.2
 	_wake.initial_velocity_min = 0.3
 	_wake.initial_velocity_max = 0.6 + speed * 0.1
 	_fill_audio()
