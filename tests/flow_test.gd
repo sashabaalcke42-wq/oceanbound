@@ -242,8 +242,8 @@ func _drive() -> void:
 	_check(grip is Vector3, "the starter boat is steered by tiller")
 	var body: Node3D = player.get_node("Body")
 	var hand_at := INF
-	for arm: Dictionary in body.get(&"_arms"):
-		var hand: Vector3 = (arm["elbow"] as Node3D).global_transform * Vector3(0, -(0.28 + 0.045), 0)
+	for i in 2:
+		var hand: Vector3 = body.call(&"hand_position", i)
 		hand_at = minf(hand_at, hand.distance_to(grip))
 	_check(hand_at < 0.05, "the driver holds the tiller (hand %.2f m from the grip)" % hand_at)
 	boat.set(&"steer", 1.0)

@@ -157,6 +157,8 @@ func _teleport(place: StringName) -> void:
 		return
 	if player.get(&"state") == 1:
 		player.call(&"leave_helm")
+	# Step off any boat properly, so our weight does not stay behind on it.
+	player.call(&"_clear_payload")
 	player.call(&"_set_riding", null)
 	player.global_position = Locations.position_of(place) + Vector3.UP * 1.5
 	player.velocity = Vector3.ZERO

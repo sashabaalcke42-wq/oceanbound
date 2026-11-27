@@ -32,7 +32,7 @@ static func save(world: Node) -> bool:
 		"format": FORMAT_VERSION,
 		"saved_at": Time.get_datetime_string_from_system(),
 		"economy": Economy.to_dict(),
-		"inventory": Inventory.to_dict(),
+		"inventory": _inventory_without_job_items(),
 		"tutorial_done": GameState.tutorial_done,
 		"design": GameState.player_design.to_dict() if GameState.player_design else null,
 		"player": _place_of(player, player.get(&"_yaw")),
@@ -49,6 +49,26 @@ static func save(world: Node) -> bool:
 		return false
 	f.store_string(JSON.stringify(data, "\t"))
 	return true
+
+
+## Jobs are not saved, so anything a job handed over (a parcel to deliver)
+## is left out: it would otherwise stay in the inventory for good.
+static func _inventory_without_job_items() -> Dictionary:
+	var inv := Inventory.to_dict()
+	var job: Job = Jobs.active
+	if job == null:
+		return inv
+	for i in mini(job.current, job.objectives.size()):
+		var give: Dictionary = job.objectives[i].get("give", {})
+		if give.is_empty():
+			continue
+		var key := String(give["id"])
+		var left: int = int(inv.get(key, 0)) - int(give["count"])
+		if left > 0:
+			inv[key] = left
+		else:
+			inv.erase(key)
+	return inv
 
 
 ## Read the save, or {} if there is none or it cannot be read.

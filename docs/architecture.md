@@ -88,9 +88,14 @@ what is in the code.
     the low side, and is pumped by bilge pumps or bailed. Boats spawn at their
     calm waterline (`VesselBuilder.float_height`) and moor with spring lines.
 14. **The character is built and animated in code.** `player/humanoid.gd`
-    builds a jointed figure from capsules and boxes and animates it from the
-    player's speed, turning and state (walk, run, jump, land, swim, sit).
-    No imported models, so it can be restyled or replaced later.
+    builds a jointed figure from rounded shapes (a high-vis jacket, work
+    trousers and boots) and animates it from the player's speed, turning and
+    state (walk, run, jump, land, swim, sit). Walking and running follow
+    measured gait curves for the hip, knee and ankle, blended by speed, with
+    the stride matched to the ground speed; each frame the hips are lowered
+    until the lower sole touches the ground, so feet plant rather than slide
+    or sink. Hands can be pinned to a world point (tiller, wheel, fishing rod)
+    with a two-bone reach. No imported models, so it can be restyled later.
 
 ## Collision layers
 

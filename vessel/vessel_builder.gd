@@ -10,6 +10,8 @@ const CELL := VesselDesign.CELL
 const OUTBOARD_PIVOT := Vector3(0, 0, 0.03)
 const TILLER_GRIP := Vector3(0, 3 * CELL + 0.15, -0.44)
 const TILLER_REACH := 0.8
+## An outboard's air intake, under the top of its cowling (block frame).
+const OUTBOARD_INTAKE := Vector3(0, 3 * CELL + 0.2, 0.04)
 ## The helm seat's wheel centre, from the middle of the seat's two cells.
 const HELM_WHEEL := Vector3(0, 0.42, -0.3)
 const WATER_DENSITY := 1025.0
@@ -148,6 +150,9 @@ static func compute_stats(design: VesselDesign) -> Dictionary:
 				"block": design.blocks.find(entry),
 				"pos": Vector3(lowest) * CELL,
 				"head": Vector3(highest) * CELL,
+				# The air intake under the cowling's cap: if water reaches it,
+				# the engine floods.
+				"intake": block_xf * OUTBOARD_INTAKE,
 				"pitch_speed": def.prop_pitch_speed_ms,
 				"forward": b * Vector3.FORWARD,
 				"thrust": def.thrust_n,
@@ -446,6 +451,11 @@ static func analyse(design: VesselDesign) -> Dictionary:
 			if prop_y > waterline - 0.05:
 				warnings.append("A propeller would be out of the water. Mount the engine lower.")
 				break
+		for e: Dictionary in engines:
+			var intake_y: float = (e.get("intake", e["head"]) as Vector3).y
+			if intake_y < waterline + 0.35:
+				warnings.append("An engine is mounted so low that waves will reach its top and flood it. Mount it higher on the transom.")
+				break
 
 	# Top speed where thrust balances drag (see vessel.gd for the model).
 	var prof: Dictionary = VESSEL_SCRIPT.DEFAULT_PROFILE
@@ -562,6 +572,11 @@ const _DARK := Color(0.12, 0.12, 0.13)
 const _METAL := Color(0.55, 0.57, 0.6)
 const _BRONZE := Color(0.85, 0.62, 0.25)
 const _WHITE := Color(0.95, 0.95, 0.92)
+
+
+## Blocks drawn as their own models by `_add_detailed`, not as full cubes.
+const DETAILED_IDS := ["outboard_15hp", "outboard_15hp_remote", "seat_helm", "bench_seat",
+		"fuel_tank_12l", "bilge_pump"]
 
 
 ## Adds a recognisable model for equipment blocks. Returns false for blocks
@@ -685,7 +700,10 @@ static func _add_cube(st: SurfaceTool, cell: Vector3i, design: VesselDesign, occ
 		if occupancy.has(n):
 			var other := design.blocks[occupancy[n]]
 			var odef := BlockLibrary.get_block(other["id"])
-			if odef.shape == BlockDef.Shape.CUBE and odef.size == Vector3i.ONE:
+			# Only a plain full cube hides this face. A seat, pump or other
+			# fitting is drawn smaller than its cell, so the face stays.
+			if odef.shape == BlockDef.Shape.CUBE and odef.size == Vector3i.ONE \
+					and not DETAILED_IDS.has(String(other["id"])):
 				continue
 		_add_face(st, center, Vector3(CELL, CELL, CELL), Vector3(dir))
 
