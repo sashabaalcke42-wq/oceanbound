@@ -37,6 +37,8 @@ var _splash: CPUParticles3D
 ## The "F: Fish here" hint is showing.
 var _hinting := false
 var _hint_timer := 0.0
+## Where the hand holds the rod (world space) while fishing, or null.
+var rod_grip: Variant = null
 
 
 func _ready() -> void:
@@ -243,6 +245,7 @@ func _process(delta: float) -> void:
 	_line.visible = fishing
 	_bite_mark.visible = fishing and state == State.BITE
 	if not fishing:
+		rod_grip = null
 		return
 	var bob := 0.0
 	if state == State.BITE:
@@ -258,6 +261,7 @@ func _process(delta: float) -> void:
 	var butt := p + Vector3.UP * 1.0 + right * 0.25 + to_float * 0.2
 	var rod_dir := (to_float + Vector3.UP * (1.3 if state == State.BITE else 0.9)).normalized()
 	var tip := butt + rod_dir * 1.9
+	rod_grip = butt + rod_dir * 0.3
 	_rod.global_transform = Transform3D(Basis(Quaternion(Vector3.UP, rod_dir)), (butt + tip) * 0.5)
 	# The line hangs from the tip to the float in a shallow curve.
 	_line_mesh.clear_surfaces()

@@ -11,14 +11,25 @@ extends CharacterBody3D
 
 enum State { ON_FOOT, AT_HELM, IN_MENU, SWIMMING }
 
-const WALK_SPEED := 3.0
+## A brisk walk and a strong run (Shift).
+const WALK_SPEED := 2.3
 const RUN_SPEED := 6.2
 const SWIM_SPEED := 1.3
 const SWIM_SPRINT := 2.1
 const JUMP_VELOCITY := 4.4
 const GROUND_ACCEL := 22.0   # m/s² towards the wanted speed: quick but not instant
+## Above walking pace a sprint builds up more slowly, as legs do.
+const SPRINT_ACCEL := 8.0
 const GROUND_DECEL := 28.0
 const AIR_ACCEL := 4.0
+## Letting go of jump early cuts the climb short (a hop rather than a leap),
+## and falling pulls a little harder than rising, so jumps feel weighty.
+const JUMP_RELEASE_CUT := 0.5
+const FALL_GRAVITY_SCALE := 1.3
+const TERMINAL_SPEED := 40.0
+## A hard landing (from about 2 m up) stuns your legs for a moment.
+const HARD_LANDING_SPEED := 6.5
+const HARD_LANDING_SLOW := 0.35
 ## Grace periods: a jump still works just after walking off an edge, and a
 ## jump pressed just before landing happens on landing.
 const COYOTE_TIME := 0.12
@@ -30,7 +41,7 @@ const MOUSE_SENSITIVITY := 0.0025
 const BODY_MASS := 80.0
 const FOOT_ARM := 3.2
 const HELM_ARM := 7.5
-const EYE_HEIGHT := 1.62
+const EYE_HEIGHT := 1.65
 const SIT_EYE_HEIGHT := 1.03
 ## Chest depth at which wading turns into swimming, and where the swimmer floats.
 const SWIM_DEPTH := 1.15
@@ -62,6 +73,10 @@ var _ground_vel := Vector3.ZERO
 ## Seconds since we last touched the floor (smooths over tiny hops on a deck).
 var _air_time := 0.0
 var _jump_buffer := 0.0
+## Rising from a jump with the key still held (so letting go cuts it short).
+var _jump_held := false
+## Seconds left of slowed movement after a hard landing.
+var _stagger := 0.0
 var _mouse_idle := 0.0
 ## What E does at the helm right now, shown as the prompt.
 var _helm_prompt := ""
@@ -265,18 +280,24 @@ func leave_helm() -> void:
 func _walk(delta: float) -> void:
 	var on_floor := is_on_floor()
 	_ground_vel = _point_velocity(riding, global_position) if on_floor and is_instance_valid(riding) else Vector3.ZERO
+	_stagger = maxf(_stagger - delta, 0.0)
 
 	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
 	var dir := (Basis(Vector3.UP, _yaw) * Vector3(input.x, 0, input.y))
 	if dir.length_squared() > 1.0:
 		dir = dir.normalized()
 	var speed := RUN_SPEED if Input.is_action_pressed(&"sprint") else WALK_SPEED
+	if _stagger > 0.0:
+		speed = minf(speed, WALK_SPEED * 0.5)
 
 	if on_floor:
 		# Move relative to whatever we stand on.
 		var rel := Vector3(velocity.x - _ground_vel.x, 0, velocity.z - _ground_vel.z)
 		var target := dir * speed
-		var rate := GROUND_ACCEL if target.length() > rel.length() else GROUND_DECEL
+		var rate := GROUND_DECEL
+		if target.length() > rel.length():
+			# Getting up to walking pace is quick; building a sprint takes longer.
+			rate = lerpf(GROUND_ACCEL, SPRINT_ACCEL, smoothstep(WALK_SPEED, RUN_SPEED, rel.length()))
 		rel = rel.move_toward(target, rate * delta)
 		velocity.x = _ground_vel.x + rel.x
 		velocity.z = _ground_vel.z + rel.z
@@ -289,24 +310,36 @@ func _walk(delta: float) -> void:
 	if Input.is_action_just_pressed(&"jump"):
 		_jump_buffer = JUMP_BUFFER
 	_jump_buffer -= delta
-	if (on_floor or _air_time < COYOTE_TIME) and _jump_buffer > 0.0:
+	if (on_floor or _air_time < COYOTE_TIME) and _jump_buffer > 0.0 and _stagger <= 0.0:
 		velocity.y = _ground_vel.y + JUMP_VELOCITY
 		_jump_buffer = 0.0
 		_air_time = COYOTE_TIME  # no second jump from the same grace period
+		_jump_held = true
 		on_floor = false
 	if not on_floor:
-		velocity.y -= _gravity * delta
+		var rising := velocity.y - _ground_vel.y > 0.0
+		if _jump_held and rising and not Input.is_action_pressed(&"jump"):
+			velocity.y = _ground_vel.y + (velocity.y - _ground_vel.y) * JUMP_RELEASE_CUT
+			_jump_held = false
+		if not rising:
+			_jump_held = false
+		velocity.y = maxf(velocity.y - _gravity * (1.0 if rising else FALL_GRAVITY_SCALE) * delta, -TERMINAL_SPEED)
 		velocity += dir * AIR_ACCEL * delta
 
 	if dir.length_squared() > 0.01 and not first_person:
-		_body_yaw = lerp_angle(_body_yaw, atan2(-dir.x, -dir.z), 1.0 - exp(-10.0 * delta))
+		# The body swings round to face the way we move: quickly at a walk,
+		# more slowly at a run, when it carries more momentum.
+		var turn_rate := lerpf(11.0, 6.0, smoothstep(WALK_SPEED, RUN_SPEED, Vector2(velocity.x - _ground_vel.x, velocity.z - _ground_vel.z).length()))
+		_body_yaw = lerp_angle(_body_yaw, atan2(-dir.x, -dir.z), 1.0 - exp(-turn_rate * delta))
 	elif first_person:
 		_body_yaw = _yaw
 	_last_vy = velocity.y - _ground_vel.y
 	move_and_slide()
 	_find_floor_body()
-	if is_on_floor() and _air_time > 0.25 and _last_vy < -2.5:
+	if is_on_floor() and _air_time > 0.2 and _last_vy < -2.0:
 		_body.call(&"land", -_last_vy)
+		if -_last_vy > HARD_LANDING_SPEED:
+			_stagger = HARD_LANDING_SLOW
 	_was_on_floor = is_on_floor()
 	_air_time = 0.0 if is_on_floor() else _air_time + delta
 
@@ -435,7 +468,9 @@ func _animate(delta: float) -> void:
 		State.SWIMMING:
 			pose = 2
 		State.ON_FOOT, State.IN_MENU:
-			pose = 0 if _air_time < 0.2 or state == State.IN_MENU else 1
+			# A short drop off a step stays a step; a jump shows straight away.
+			var airborne := _air_time >= 0.2 or (_air_time > 0.0 and velocity.y - _ground_vel.y > 1.5)
+			pose = 1 if airborne and state == State.ON_FOOT else 0
 	var rel := velocity - _ground_vel
 	if state == State.AT_HELM or state == State.IN_MENU:
 		rel = Vector3.ZERO
@@ -452,6 +487,19 @@ func _animate(delta: float) -> void:
 ## At the helm, where the hands go: one on a tiller, or both on the wheel
 ## (left then right, null for a hand left free).
 func _hand_targets() -> Array:
+	var hands := _helm_hands()
+	# A rod out fishing goes in a free hand, the right if it can.
+	var fishing := get_node_or_null(^"Fishing")
+	var rod: Variant = fishing.get(&"rod_grip") if fishing else null
+	if rod is Vector3:
+		if hands[1] == null:
+			hands[1] = rod
+		elif hands[0] == null:
+			hands[0] = rod
+	return hands
+
+
+func _helm_hands() -> Array:
 	if state != State.AT_HELM or not is_instance_valid(vessel):
 		return [null, null]
 	var grip: Variant = vessel.call(&"tiller_grip")
