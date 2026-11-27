@@ -89,6 +89,9 @@ var submerged_ratio := 0.0
 var prop_grip := 1.0
 
 var _payloads := {}  # key -> [mass, local position]
+## Sideways middle of the hull's waterplane (local x). Thrust is shifted by
+## how far the centre of mass sits off it (see `_apply_thrust`).
+var _hull_center_x := 0.0
 var _helm_occupant: Node3D
 var _water_shift := Vector3.ZERO
 var _water_payload := [0.0, Vector3.ZERO]
@@ -114,6 +117,11 @@ func setup(p_design: VesselDesign, p_stats: Dictionary) -> void:
 	design = p_design
 	stats = p_stats
 	fuel_l = stats["fuel_capacity"]
+	var area_sum := 0.0
+	for col: Dictionary in stats["columns"]:
+		_hull_center_x += (col["pos"] as Vector3).x * (col["area"] as float)
+		area_sum += col["area"]
+	_hull_center_x = _hull_center_x / area_sum if area_sum > 0.0 else 0.0
 	_apply_mass_properties()
 	# We do our own water drag, so turn the default damping off.
 	linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
@@ -442,6 +450,11 @@ func _apply_thrust(xf: Transform3D, delta: float) -> void:
 		# for it without a full hydrodynamic model.
 		var local_at: Vector3 = e["pos"]
 		local_at.y = lerpf(local_at.y, center_of_mass.y, profile["thrust_height_assist"])
+		# Sideways, push in line with the centre of mass, as the hull's grip on
+		# the water does for a real boat. Otherwise a driver sitting to one side
+		# of a centreline motor would slew the boat round every time it sped up.
+		# (Twin motors keep their spacing, so they can still steer by thrust.)
+		local_at.x += center_of_mass.x - _hull_center_x
 		apply_force(xf.basis * dir * (e["thrust"] as float) * power * grip * load, xf * local_at - global_position)
 	prop_grip = grip_sum / maxf(stats["engines"].size(), 1)
 	if fuel_l <= 0.0:
@@ -450,11 +463,11 @@ func _apply_thrust(xf: Transform3D, delta: float) -> void:
 		EventBus.notify.emit("The engine coughs and dies. Out of fuel.")
 
 
-## Is any engine's powerhead (its top) under the water?
+## Is any engine's air intake (under the top of its cowling) under the water?
 func _powerhead_under(xf: Transform3D) -> bool:
 	for e: Dictionary in stats["engines"]:
-		var head: Vector3 = xf * (e.get("head", e["pos"]) as Vector3)
-		if head.y < Waves.height_at(head.x, head.z) - 0.05:
+		var intake: Vector3 = xf * (e.get("intake", e.get("head", e["pos"])) as Vector3)
+		if intake.y < Waves.height_at(intake.x, intake.z):
 			return true
 	return false
 
