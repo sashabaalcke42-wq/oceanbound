@@ -13,6 +13,7 @@ var _max_tilt := 0.0
 var _dry_y := 0.0
 var _drift_from := Vector3.ZERO
 var _min_y := INF
+var _heading_from := 0.0
 
 
 func _ready() -> void:
@@ -56,12 +57,18 @@ func _physics_process(_delta: float) -> void:
 				_check(absf(boat.linear_velocity.y) < 0.05, "settles")
 				boat.call(&"set_engine_running", true)
 				boat.set(&"input_throttle_axis", 1.0)
+				_heading_from = boat.global_rotation.y
 				_next()
 		1:  # full ahead
 			if t >= 20.0:
 				var kn: float = boat.get(&"speed_ms") * 1.944
 				print("Full ahead for 20 s: %.1f kn, throttle %.2f, fuel left %.2f L" % [kn, boat.get(&"throttle"), boat.get(&"fuel_l")])
 				_check(kn > 12.0 and kn < 32.0, "top speed between 12 and 32 knots")
+				# The driver sits to one side of the tiller: the boat leans, but
+				# should hold its course with the tiller straight.
+				var drift := rad_to_deg(angle_difference(_heading_from, boat.global_rotation.y))
+				print("Heading drift with the driver off-centre: %.1f deg" % drift)
+				_check(absf(drift) < 8.0, "holds a straight course with the driver to one side")
 				_turned = 0.0
 				boat.set(&"input_steer_axis", 1.0)
 				_next()
